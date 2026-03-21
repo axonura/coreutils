@@ -1,5 +1,5 @@
 /* head -- output first part of file(s)
-   Copyright (C) 1989-2025 Free Software Foundation, Inc.
+   Copyright (C) 1989-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -58,7 +58,7 @@ static bool presume_input_pipe;
 static bool print_headers;
 
 /* Character to split lines by. */
-static char line_end;
+static char line_end = '\n';
 
 /* When to print the filename banners. */
 enum header_mode
@@ -85,17 +85,17 @@ enum
 
 static struct option const long_options[] =
 {
-  {"bytes", required_argument, nullptr, 'c'},
-  {"lines", required_argument, nullptr, 'n'},
-  {"-presume-input-pipe", no_argument, nullptr,
+  {"bytes", required_argument, NULL, 'c'},
+  {"lines", required_argument, NULL, 'n'},
+  {"-presume-input-pipe", no_argument, NULL,
    PRESUME_INPUT_PIPE_OPTION}, /* do not document */
-  {"quiet", no_argument, nullptr, 'q'},
-  {"silent", no_argument, nullptr, 'q'},
-  {"verbose", no_argument, nullptr, 'v'},
-  {"zero-terminated", no_argument, nullptr, 'z'},
+  {"quiet", no_argument, NULL, 'q'},
+  {"silent", no_argument, NULL, 'q'},
+  {"verbose", no_argument, NULL, 'v'},
+  {"zero-terminated", no_argument, NULL, 'z'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -117,23 +117,30 @@ With more than one FILE, precede each with a header giving the file name.\n\
       emit_stdin_note ();
       emit_mandatory_arg_note ();
 
-      printf (_("\
-  -c, --bytes=[-]NUM       print the first NUM bytes of each file;\n\
-                             with the leading '-', print all but the last\n\
-                             NUM bytes of each file\n\
-  -n, --lines=[-]NUM       print the first NUM lines instead of the first %d;\n\
-                             with the leading '-', print all but the last\n\
-                             NUM lines of each file\n\
+      oputs (_("\
+  -c, --bytes=[-]NUM\n\
+         print the first NUM bytes of each file;\n\
+         with the leading '-', print all but the last NUM bytes of each file\n\
+"));
+      oprintf (_("\
+  -n, --lines=[-]NUM\n\
+         print the first NUM lines instead of the first %d;\n\
+         with the leading '-', print all but the last NUM lines of each file\n\
 "), DEFAULT_NUMBER);
-      fputs (_("\
-  -q, --quiet, --silent    never print headers giving file names\n\
-  -v, --verbose            always print headers giving file names\n\
-"), stdout);
-      fputs (_("\
-  -z, --zero-terminated    line delimiter is NUL, not newline\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -q, --quiet, --silent\n\
+         never print headers giving file names\n\
+"));
+      oputs (_("\
+  -v, --verbose\n\
+         always print headers giving file names\n\
+"));
+      oputs (_("\
+  -z, --zero-terminated\n\
+         line delimiter is NUL, not newline\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       fputs (_("\
 \n\
 NUM may have a multiplier suffix:\n\
@@ -297,12 +304,11 @@ elide_tail_bytes_pipe (char const *filename, int fd, uintmax_t n_elide,
       bool first = true;
       bool eof = false;
       idx_t n_to_read = READ_BUFSIZE + n_elide;
-      bool i;
       char *b[2];
       b[0] = xnmalloc (2, n_to_read);
       b[1] = b[0] + n_to_read;
 
-      for (i = false; ! eof ; i = !i)
+      for (bool i = false; ! eof ; i = !i)
         {
           idx_t n_read = full_read (fd, b[i], n_to_read);
           idx_t delta = 0;
@@ -357,7 +363,7 @@ elide_tail_bytes_pipe (char const *filename, int fd, uintmax_t n_elide,
 
       bool eof = false;
       idx_t n_read;
-      char **b = nullptr;
+      char **b = NULL;
 
       idx_t remainder = n_elide % READ_BUFSIZE;
       /* The number of buffers needed to hold n_elide bytes plus one
@@ -511,7 +517,7 @@ elide_tail_lines_pipe (char const *filename, int fd, uintmax_t n_elide,
 
   first = last = xmalloc (sizeof (LBUFFER));
   first->nbytes = first->nlines = 0;
-  first->next = nullptr;
+  first->next = NULL;
   tmp = xmalloc (sizeof (LBUFFER));
 
   /* Always read into a fresh buffer.
@@ -532,7 +538,7 @@ elide_tail_lines_pipe (char const *filename, int fd, uintmax_t n_elide,
 
       tmp->nbytes = n_read;
       tmp->nlines = 0;
-      tmp->next = nullptr;
+      tmp->next = NULL;
 
       /* Count the number of newlines just read.  */
       {
@@ -687,7 +693,7 @@ elide_tail_lines_seekable (char const *pretty_filename, int fd,
             {
               char const *nl;
               nl = memrchr (buffer, line_end, n);
-              if (nl == nullptr)
+              if (nl == NULL)
                 break;
               n = nl - buffer;
             }
@@ -911,7 +917,6 @@ main (int argc, char **argv)
   enum header_mode header_mode = multiple_files;
   bool ok = true;
   int c;
-  size_t i;
 
   /* Number of items to output, or to elide from the end.
      UINTMAX_MAX stands for an essentially unlimited number.  */
@@ -927,7 +932,7 @@ main (int argc, char **argv)
 
   /* Initializer for file_list if no file-arguments
      were specified on the command line.  */
-  static char const *const default_file_list[] = {"-", nullptr};
+  static char const *const default_file_list[] = {"-", NULL};
   char const *const *file_list;
 
   initialize_main (&argc, &argv);
@@ -937,12 +942,6 @@ main (int argc, char **argv)
   textdomain (PACKAGE);
 
   atexit (close_stdout);
-
-  have_read_stdin = false;
-
-  print_headers = false;
-
-  line_end = '\n';
 
   if (1 < argc && argv[1][0] == '-' && c_isdigit (argv[1][1]))
     {
@@ -1013,7 +1012,7 @@ main (int argc, char **argv)
     }
 
   while ((c = getopt_long (argc, argv, "c:n:qvz0123456789",
-                           long_options, nullptr))
+                           long_options, NULL))
          != -1)
     {
       switch (c)
@@ -1071,7 +1070,7 @@ main (int argc, char **argv)
 
   xset_binary_mode (STDOUT_FILENO, O_BINARY);
 
-  for (i = 0; file_list[i]; ++i)
+  for (size_t i = 0; file_list[i]; ++i)
     ok &= head_file (file_list[i], n_units, count_lines, elide_from_end);
 
   if (have_read_stdin && close (STDIN_FILENO) < 0)

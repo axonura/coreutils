@@ -1,5 +1,5 @@
 /* Permuted index for GNU, with keywords in their context.
-   Copyright (C) 1990-2025 Free Software Foundation, Inc.
+   Copyright (C) 1990-2026 Free Software Foundation, Inc.
    François Pinard <pinard@iro.umontreal.ca>, 1988.
 
    This program is free software: you can redistribute it and/or modify
@@ -19,7 +19,6 @@
 
 #include <config.h>
 
-#include <ctype.h>
 #include <getopt.h>
 #include <sys/types.h>
 #include "system.h"
@@ -27,6 +26,7 @@
 #include "argmatch.h"
 #include "c-ctype.h"
 #include "fadvise.h"
+#include "octhexdigits.h"
 #include "quote.h"
 #include "read-file.h"
 #include "stdio--.h"
@@ -42,11 +42,6 @@
 
 /* Number of possible characters in a byte.  */
 #define CHAR_SET_SIZE 256
-
-#define ISODIGIT(C) ((C) >= '0' && (C) <= '7')
-#define HEXTOBIN(C) ((C) >= 'a' && (C) <= 'f' ? (C)-'a'+10 \
-                     : (C) >= 'A' && (C) <= 'F' ? (C)-'A'+10 : (C)-'0')
-#define OCTTOBIN(C) ((C) - '0')
 
 /* Debugging the memory allocator.  */
 
@@ -76,7 +71,7 @@ static bool gnu_extensions = true;	/* trigger all GNU extensions */
 static bool auto_reference = false;	/* refs are 'file_name:line_number:' */
 static bool input_reference = false;	/* refs at beginning of input lines */
 static bool right_reference = false;	/* output refs after right context  */
-static idx_t line_width = 72;		/* output line width in characters */
+static idx_t line_width = -1;		/* output line width in characters */
 static idx_t gap_size = 3;	/* number of spaces between output fields */
 static char const *truncation_string = "/";
                                 /* string used to mark line truncations */
@@ -85,9 +80,9 @@ static enum Format output_format = UNKNOWN_FORMAT;
                                 /* output format */
 
 static bool ignore_case = false;	/* fold lower to upper for sorting */
-static char const *break_file = nullptr; /* name of the 'Break chars' file */
-static char const *only_file = nullptr;	/* name of the 'Only words' file */
-static char const *ignore_file = nullptr; /* name of the 'Ignore words' file */
+static char const *break_file = NULL; /* name of the 'Break chars' file */
+static char const *only_file = NULL;	/* name of the 'Only words' file */
+static char const *ignore_file = NULL; /* name of the 'Ignore words' file */
 
 /* Options that use regular expressions.  */
 struct regex_data
@@ -186,7 +181,7 @@ static BLOCK *text_buffers;	/* files to study */
     {									\
       regoff_t count;							\
       count = re_match (&word_regex.pattern, cursor, limit - cursor,	\
-                        0, nullptr);					\
+                        0, NULL);					\
       if (count == -2)							\
         matcher_error ();						\
       cursor += count == -1 ? 1 : count;				\
@@ -314,7 +309,7 @@ unescape_string (char *string)
               for (length = 0, string++;
                    length < 3 && c_isxdigit (*string);
                    length++, string++)
-                value = value * 16 + HEXTOBIN (*string);
+                value = value * 16 + fromhex (*string);
               if (length == 0)
                 {
                   *cursor++ = '\\';
@@ -327,9 +322,9 @@ unescape_string (char *string)
             case '0':		/* \0ooo escape, 3 chars maximum */
               value = 0;
               for (length = 0, string++;
-                   length < 3 && ISODIGIT (*string);
+                   length < 3 && isoct (*string);
                    length++, string++)
-                value = value * 8 + OCTTOBIN (*string);
+                value = value * 8 + fromoct (*string);
               *cursor++ = value;
               break;
 
@@ -401,10 +396,10 @@ compile_regex (struct regex_data *regex)
   char const *string = regex->string;
   char const *message;
 
-  pattern->buffer = nullptr;
+  pattern->buffer = NULL;
   pattern->allocated = 0;
   pattern->fastmap = regex->fastmap;
-  pattern->translate = ignore_case ? folded_chars : nullptr;
+  pattern->translate = ignore_case ? folded_chars : NULL;
 
   message = re_compile_pattern (string, strlen (string), pattern);
   if (message)
@@ -425,12 +420,10 @@ compile_regex (struct regex_data *regex)
 static void
 initialize_regex (void)
 {
-  int character;		/* character value */
-
   /* Initialize the case folding table.  */
 
   if (ignore_case)
-    for (character = 0; character < CHAR_SET_SIZE; character++)
+    for (int character = 0; character < CHAR_SET_SIZE; character++)
       folded_chars[character] = toupper (character);
 
   /* Unless the user already provided a description of the end of line or
@@ -443,7 +436,7 @@ initialize_regex (void)
   if (context_regex.string)
     {
       if (!*context_regex.string)
-        context_regex.string = nullptr;
+        context_regex.string = NULL;
     }
   else if (gnu_extensions && !input_reference)
     context_regex.string = "[.?!][]\"')}]*\\($\\|\t\\|  \\)[ \t\n]*";
@@ -470,7 +463,7 @@ initialize_regex (void)
 
           /* Simulate \w+.  */
 
-          for (character = 0; character < CHAR_SET_SIZE; character++)
+          for (int character = 0; character < CHAR_SET_SIZE; character++)
             word_fastmap[character] = !! isalpha (character);
         }
       else
@@ -631,14 +624,14 @@ static void
 digest_break_file (char const *file_name)
 {
   BLOCK file_contents;		/* to receive a copy of the file */
-  char *cursor;			/* cursor in file copy */
 
   swallow_file_in_memory (file_name, &file_contents);
 
   /* Make the fastmap and record the file contents in it.  */
 
   memset (word_fastmap, 1, CHAR_SET_SIZE);
-  for (cursor = file_contents.start; cursor < file_contents.end; cursor++)
+  for (char *cursor = file_contents.start; cursor < file_contents.end;
+       cursor++)
     word_fastmap[to_uchar (*cursor)] = 0;
 
   if (!gnu_extensions)
@@ -676,7 +669,7 @@ digest_word_file (char const *file_name, WORD_TABLE *table)
 
   swallow_file_in_memory (file_name, &file_contents);
 
-  table->start = nullptr;
+  table->start = NULL;
   table->alloc = 0;
   table->length = 0;
 
@@ -724,8 +717,7 @@ digest_word_file (char const *file_name, WORD_TABLE *table)
 static void
 find_occurs_in_text (int file_index)
 {
-  char *cursor;			/* for scanning the source text */
-  char *scan;			/* for scanning the source text also */
+  char *scan;			/* for scanning the source text */
   char *line_start;		/* start of the current input line */
   char *line_scan;		/* newlines scanned until this point */
   idx_t reference_length;	/* length of reference in input mode */
@@ -766,7 +758,7 @@ find_occurs_in_text (int file_index)
 
   /* Process the whole buffer, one line or one sentence at a time.  */
 
-  for (cursor = text_buffer->start;
+  for (char *cursor = text_buffer->start;
        cursor < text_buffer->end;
        cursor = next_context_start)
     {
@@ -1011,12 +1003,10 @@ print_spaces (ptrdiff_t number)
 static void
 print_field (BLOCK field)
 {
-  char *cursor;			/* Cursor in field to print */
-
   /* Whitespace is not really compressed.  Instead, each white space
      character (tab, vt, ht etc.) is printed as one single space.  */
 
-  for (cursor = field.start; cursor < field.end; cursor++)
+  for (char *cursor = field.start; cursor < field.end; cursor++)
     {
       unsigned char character = *cursor;
       if (edited_flag[character])
@@ -1127,7 +1117,7 @@ fix_output_parameters (void)
   if (truncation_string && *truncation_string)
     truncation_string_length = strlen (truncation_string);
   else
-    truncation_string = nullptr;
+    truncation_string = NULL;
 
   if (gnu_extensions)
     {
@@ -1342,8 +1332,8 @@ define_all_fields (OCCURS *occurs)
 
       /* No place left for a tail field.  */
 
-      tail.start = nullptr;
-      tail.end = nullptr;
+      tail.start = NULL;
+      tail.end = NULL;
       tail_truncation = false;
     }
 
@@ -1381,8 +1371,8 @@ define_all_fields (OCCURS *occurs)
 
       /* No place left for a head field.  */
 
-      head.start = nullptr;
-      head.end = nullptr;
+      head.start = NULL;
+      head.end = NULL;
       head_truncation = false;
     }
 
@@ -1620,12 +1610,12 @@ generate_all_output (void)
      line contexts or references are not used, in which case these variables
      would never be computed.  */
 
-  tail.start = nullptr;
-  tail.end = nullptr;
+  tail.start = NULL;
+  tail.end = NULL;
   tail_truncation = false;
 
-  head.start = nullptr;
-  head.end = nullptr;
+  head.start = NULL;
+  head.end = NULL;
   head_truncation = false;
 
   /* Loop over all keyword occurrences.  */
@@ -1690,36 +1680,60 @@ Output a permuted index, including context, of the words in the input files.\n\
       emit_stdin_note ();
       emit_mandatory_arg_note ();
 
-      fputs (_("\
+      oputs (_("\
   -A, --auto-reference           output automatically generated references\n\
+"));
+      oputs (_("\
   -G, --traditional              behave more like System V 'ptx'\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -F, --flag-truncation=STRING   use STRING for flagging line truncations.\n\
                                  The default is '/'\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -M, --macro-name=STRING        macro name to use instead of 'xx'\n\
+"));
+      oputs (_("\
   -O, --format=roff              generate output as roff directives\n\
+"));
+      oputs (_("\
   -R, --right-side-refs          put references at right, not counted in -w\n\
+"));
+      oputs (_("\
   -S, --sentence-regexp=REGEXP   for end of lines or end of sentences\n\
+"));
+      oputs (_("\
   -T, --format=tex               generate output as TeX directives\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -W, --word-regexp=REGEXP       use REGEXP to match each keyword\n\
+"));
+      oputs (_("\
   -b, --break-file=FILE          word break characters in this FILE\n\
+"));
+      oputs (_("\
   -f, --ignore-case              fold lower case to upper case for sorting\n\
+"));
+      oputs (_("\
   -g, --gap-size=NUMBER          gap size in columns between output fields\n\
+"));
+      oputs (_("\
   -i, --ignore-file=FILE         read ignore word list from FILE\n\
+"));
+      oputs (_("\
   -o, --only-file=FILE           read only word list from this FILE\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -r, --references               first field of each line is a reference\n\
-  -t, --typeset-mode               - not implemented -\n\
+"));
+      oputs (_("\
+  -t, --typeset-mode             change the default width from 72 to 100\n\
+"));
+      oputs (_("\
   -w, --width=NUMBER             output width in columns, reference excluded\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       emit_ancillary_info (PROGRAM_NAME);
     }
   exit (status);
@@ -1730,33 +1744,40 @@ Output a permuted index, including context, of the words in the input files.\n\
 | strings, then launch execution.				        |
 `----------------------------------------------------------------------*/
 
+/* For long options that have no equivalent short option, use a
+   non-character as a pseudo short option, starting with CHAR_MAX + 1.  */
+enum
+{
+  FORMAT_OPTION = CHAR_MAX + 1
+};
+
 /* Long options equivalences.  */
 static struct option const long_options[] =
 {
-  {"auto-reference", no_argument, nullptr, 'A'},
-  {"break-file", required_argument, nullptr, 'b'},
-  {"flag-truncation", required_argument, nullptr, 'F'},
-  {"ignore-case", no_argument, nullptr, 'f'},
-  {"gap-size", required_argument, nullptr, 'g'},
-  {"ignore-file", required_argument, nullptr, 'i'},
-  {"macro-name", required_argument, nullptr, 'M'},
-  {"only-file", required_argument, nullptr, 'o'},
-  {"references", no_argument, nullptr, 'r'},
-  {"right-side-refs", no_argument, nullptr, 'R'},
-  {"format", required_argument, nullptr, 10},
-  {"sentence-regexp", required_argument, nullptr, 'S'},
-  {"traditional", no_argument, nullptr, 'G'},
-  {"typeset-mode", no_argument, nullptr, 't'},
-  {"width", required_argument, nullptr, 'w'},
-  {"word-regexp", required_argument, nullptr, 'W'},
+  {"auto-reference", no_argument, NULL, 'A'},
+  {"break-file", required_argument, NULL, 'b'},
+  {"flag-truncation", required_argument, NULL, 'F'},
+  {"ignore-case", no_argument, NULL, 'f'},
+  {"gap-size", required_argument, NULL, 'g'},
+  {"ignore-file", required_argument, NULL, 'i'},
+  {"macro-name", required_argument, NULL, 'M'},
+  {"only-file", required_argument, NULL, 'o'},
+  {"references", no_argument, NULL, 'r'},
+  {"right-side-refs", no_argument, NULL, 'R'},
+  {"format", required_argument, NULL, FORMAT_OPTION},
+  {"sentence-regexp", required_argument, NULL, 'S'},
+  {"traditional", no_argument, NULL, 'G'},
+  {"typeset-mode", no_argument, NULL, 't'},
+  {"width", required_argument, NULL, 'w'},
+  {"word-regexp", required_argument, NULL, 'W'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0},
+  {NULL, 0, NULL, 0},
 };
 
 static char const *const format_args[] =
 {
-  "roff", "tex", nullptr
+  "roff", "tex", NULL
 };
 
 static enum Format const format_vals[] =
@@ -1781,7 +1802,7 @@ main (int argc, char **argv)
   atexit (close_stdout);
 
   while (optchar = getopt_long (argc, argv, "AF:GM:ORS:TW:b:i:fg:o:trw:",
-                                long_options, nullptr),
+                                long_options, NULL),
          optchar != EOF)
     {
       switch (optchar)
@@ -1804,7 +1825,7 @@ main (int argc, char **argv)
         case 'g':
           {
             intmax_t tmp;
-            if (! (xstrtoimax (optarg, nullptr, 0, &tmp, "") == LONGINT_OK
+            if (! (xstrtoimax (optarg, NULL, 0, &tmp, "") == LONGINT_OK
                    && 0 < tmp && tmp <= IDX_MAX))
               error (EXIT_FAILURE, 0, _("invalid gap width: %s"),
                      quote (optarg));
@@ -1825,13 +1846,14 @@ main (int argc, char **argv)
           break;
 
         case 't':
-          /* Yet to understand...  */
+          if (line_width < 0)
+            line_width = 100;
           break;
 
         case 'w':
           {
             intmax_t tmp;
-            if (! (xstrtoimax (optarg, nullptr, 0, &tmp, "") == LONGINT_OK
+            if (! (xstrtoimax (optarg, NULL, 0, &tmp, "") == LONGINT_OK
                    && 0 < tmp && tmp <= IDX_MAX))
               error (EXIT_FAILURE, 0, _("invalid line width: %s"),
                      quote (optarg));
@@ -1873,10 +1895,10 @@ main (int argc, char **argv)
           word_regex.string = optarg;
           unescape_string (optarg);
           if (!*word_regex.string)
-            word_regex.string = nullptr;
+            word_regex.string = NULL;
           break;
 
-        case 10:
+        case FORMAT_OPTION:
           output_format = XARGMATCH ("--format", optarg,
                                      format_args, format_vals);
           break;
@@ -1886,6 +1908,9 @@ main (int argc, char **argv)
         case_GETOPT_VERSION_CHAR (PROGRAM_NAME, AUTHORS);
         }
     }
+
+  if (line_width < 0)
+    line_width = 72;
 
   /* Process remaining arguments.  If GNU extensions are enabled, process
      all arguments as input parameters.  If disabled, accept at most two
@@ -1900,7 +1925,7 @@ main (int argc, char **argv)
       file_line_count = xmalloc (sizeof *file_line_count);
       text_buffers =    xmalloc (sizeof *text_buffers);
       number_input_files = 1;
-      input_file_name[0] = nullptr;
+      input_file_name[0] = NULL;
     }
   else if (gnu_extensions)
     {
@@ -1912,7 +1937,7 @@ main (int argc, char **argv)
       for (file_index = 0; file_index < number_input_files; file_index++)
         {
           if (!*argv[optind] || streq (argv[optind], "-"))
-            input_file_name[file_index] = nullptr;
+            input_file_name[file_index] = NULL;
           else
             input_file_name[file_index] = argv[optind];
           optind++;
@@ -1928,7 +1953,7 @@ main (int argc, char **argv)
       file_line_count = xmalloc (sizeof *file_line_count);
       text_buffers    = xmalloc (sizeof *text_buffers);
       if (!*argv[optind] || streq (argv[optind], "-"))
-        input_file_name[0] = nullptr;
+        input_file_name[0] = NULL;
       else
         input_file_name[0] = argv[optind];
       optind++;
@@ -1974,14 +1999,14 @@ main (int argc, char **argv)
     {
       digest_word_file (ignore_file, &ignore_table);
       if (ignore_table.length == 0)
-        ignore_file = nullptr;
+        ignore_file = NULL;
     }
 
   if (only_file)
     {
       digest_word_file (only_file, &only_table);
       if (only_table.length == 0)
-        only_file = nullptr;
+        only_file = NULL;
     }
 
   /* Prepare to study all the input files.  */

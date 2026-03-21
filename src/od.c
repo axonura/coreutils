@@ -1,5 +1,5 @@
 /* od -- dump files in octal and other formats
-   Copyright (C) 1992-2025 Free Software Foundation, Inc.
+   Copyright (C) 1992-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,7 +18,6 @@
 
 #include <config.h>
 
-#include <ctype.h>
 #include <endian.h>
 #include <float.h>
 #include <stdio.h>
@@ -249,7 +248,7 @@ static char const *const *file_list;
 
 /* Initializer for file_list if no file-arguments
    were specified on the command line.  */
-static char const *const default_file_list[] = {"-", nullptr};
+static char const *const default_file_list[] = {"-", NULL};
 
 /* The input stream associated with the current file.  */
 static FILE *in_stream;
@@ -323,7 +322,7 @@ enum endian_type
 
 static char const *const endian_args[] =
 {
-  "little", "big", nullptr
+  "little", "big", NULL
 };
 
 static enum endian_type const endian_types[] =
@@ -333,19 +332,19 @@ static enum endian_type const endian_types[] =
 
 static struct option const long_options[] =
 {
-  {"skip-bytes", required_argument, nullptr, 'j'},
-  {"address-radix", required_argument, nullptr, 'A'},
-  {"read-bytes", required_argument, nullptr, 'N'},
-  {"format", required_argument, nullptr, 't'},
-  {"output-duplicates", no_argument, nullptr, 'v'},
-  {"strings", optional_argument, nullptr, 'S'},
-  {"traditional", no_argument, nullptr, TRADITIONAL_OPTION},
-  {"width", optional_argument, nullptr, 'w'},
-  {"endian", required_argument, nullptr, ENDIAN_OPTION },
+  {"skip-bytes", required_argument, NULL, 'j'},
+  {"address-radix", required_argument, NULL, 'A'},
+  {"read-bytes", required_argument, NULL, 'N'},
+  {"format", required_argument, NULL, 't'},
+  {"output-duplicates", no_argument, NULL, 'v'},
+  {"strings", optional_argument, NULL, 'S'},
+  {"traditional", no_argument, NULL, TRADITIONAL_OPTION},
+  {"width", optional_argument, NULL, 'w'},
+  {"endian", required_argument, NULL, ENDIAN_OPTION },
 
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -381,41 +380,82 @@ suffixes may be . for octal and b for multiply by 512.\n\
 
       emit_mandatory_arg_note ();
 
-      fputs (_("\
-  -A, --address-radix=RADIX   output format for file offsets; RADIX is one\n\
-                                of [doxn], for Decimal, Octal, Hex or None\n\
-      --endian={big|little}   swap input bytes according the specified order\n\
-  -j, --skip-bytes=BYTES      skip BYTES input bytes first\n\
-"), stdout);
-      fputs (_("\
-  -N, --read-bytes=BYTES      limit dump to BYTES input bytes\n\
-  -S BYTES, --strings[=BYTES]  show only NUL terminated strings\n\
-                                of at least BYTES (3) printable characters\n\
-  -t, --format=TYPE           select output format or formats\n\
-  -v, --output-duplicates     do not use * to mark line suppression\n\
-  -w[BYTES], --width[=BYTES]  output BYTES bytes per output line;\n\
-                                32 is implied when BYTES is not specified\n\
-      --traditional           accept arguments in third form above\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -A, --address-radix=RADIX\n\
+         output format for file offsets;\n\
+         RADIX is one of [doxn], for Decimal, Octal, Hex or None\n\
+"));
+      oputs (_("\
+      --endian={big|little}\n\
+         swap input bytes according the specified order\n\
+"));
+      oputs (_("\
+  -j, --skip-bytes=BYTES\n\
+         skip BYTES input bytes first\n\
+"));
+      oputs (_("\
+  -N, --read-bytes=BYTES\n\
+         limit dump to BYTES input bytes\n\
+"));
+      oputs (_("\
+  -S BYTES, --strings[=BYTES]\n\
+         show only NUL terminated strings\n\
+         of at least BYTES (default 3) printable characters\n\
+"));
+      oputs (_("\
+  -t, --format=TYPE\n\
+         select output format or formats\n\
+"));
+      oputs (_("\
+  -v, --output-duplicates\n\
+         do not use * to mark line suppression\n\
+"));
+      oputs (_("\
+  -w[BYTES], --width[=BYTES]\n\
+         output BYTES bytes per output line;\n\
+         32 is implied when BYTES is not specified\n\
+"));
+      oputs (_("\
+      --traditional\n\
+         accept arguments in third form above\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       fputs (_("\
 \n\
 \n\
 Traditional format specifications may be intermixed; they accumulate:\n\
+"), stdout);
+      oputs (_("\
   -a   same as -t a,  select named characters, ignoring high-order bit\n\
+"));
+      oputs (_("\
   -b   same as -t o1, select octal bytes\n\
+"));
+      oputs (_("\
   -c   same as -t c,  select printable characters or backslash escapes\n\
+"));
+      oputs (_("\
   -d   same as -t u2, select unsigned decimal 2-byte units\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -f   same as -t fF, select floats\n\
+"));
+      oputs (_("\
   -i   same as -t dI, select decimal ints\n\
+"));
+      oputs (_("\
   -l   same as -t dL, select decimal longs\n\
+"));
+      oputs (_("\
   -o   same as -t o2, select octal 2-byte units\n\
+"));
+      oputs (_("\
   -s   same as -t d2, select decimal 2-byte units\n\
+"));
+      oputs (_("\
   -x   same as -t x2, select hexadecimal 2-byte units\n\
-"), stdout);
+"));
       fputs (_("\
 \n\
 \n\
@@ -825,7 +865,7 @@ decode_one_format (char const *s_orig, char const *s, char const **next,
            ? print_intmax
            : LONG < LONG_LONG && LONG_LONG < INTMAX && size_spec == LONG_LONG
            ? print_long_long
-           : (affirm (false), (print_function_type) nullptr));
+           : (affirm (false), (print_function_type) NULL));
       break;
 
     case 'f':
@@ -983,7 +1023,7 @@ open_next_file (void)
   do
     {
       input_filename = *file_list;
-      if (input_filename == nullptr)
+      if (input_filename == NULL)
         return ok;
       ++file_list;
 
@@ -997,17 +1037,17 @@ open_next_file (void)
       else
         {
           in_stream = fopen (input_filename, (O_BINARY ? "rb" : "r"));
-          if (in_stream == nullptr)
+          if (in_stream == NULL)
             {
               error (0, errno, "%s", quotef (input_filename));
               ok = false;
             }
         }
     }
-  while (in_stream == nullptr);
+  while (in_stream == NULL);
 
   if (0 <= end_offset && !flag_dump_strings)
-    setvbuf (in_stream, nullptr, _IONBF, 0);
+    setvbuf (in_stream, NULL, _IONBF, 0);
 
   return ok;
 }
@@ -1024,7 +1064,7 @@ check_and_close (int in_errno)
 {
   bool ok = true;
 
-  if (in_stream != nullptr)
+  if (in_stream != NULL)
     {
       if (!ferror (in_stream))
         in_errno = 0;
@@ -1038,7 +1078,7 @@ check_and_close (int in_errno)
           ok = false;
         }
 
-      in_stream = nullptr;
+      in_stream = NULL;
     }
 
   if (ferror (stdout))
@@ -1093,7 +1133,7 @@ skip (intmax_t n_skip)
   if (n_skip == 0)
     return true;
 
-  while (in_stream != nullptr)	/* EOF.  */
+  while (in_stream != NULL)	/* EOF.  */
     {
       struct stat file_stats;
 
@@ -1370,7 +1410,7 @@ read_block (idx_t n, char *block, idx_t *n_bytes_in_buffer)
 
   *n_bytes_in_buffer = 0;
 
-  while (in_stream != nullptr)	/* EOF.  */
+  while (in_stream != NULL)	/* EOF.  */
     {
       idx_t n_needed = n - *n_bytes_in_buffer;
       idx_t n_read = fread (block + *n_bytes_in_buffer,
@@ -1403,14 +1443,14 @@ get_lcm (void)
   return l_c_m;
 }
 
-/* Act like xstrtoimax (NPTR, nullptr, BASE, VAL, VALID_SUFFIXES),
+/* Act like xstrtoimax (NPTR, NULL, BASE, VAL, VALID_SUFFIXES),
    except reject negative values, and *VAL may be set if
    LONGINT_INVALID is returned.  */
 static strtol_error
 xstr2nonneg (char const *restrict nptr, int base, intmax_t *val,
              char const *restrict valid_suffixes)
 {
-  strtol_error s_err = xstrtoimax (nptr, nullptr, base, val, valid_suffixes);
+  strtol_error s_err = xstrtoimax (nptr, NULL, base, val, valid_suffixes);
   return s_err != LONGINT_INVALID && *val < 0 ? LONGINT_INVALID : s_err;
 }
 
@@ -1435,7 +1475,7 @@ parse_old_offset (char *str, intmax_t *offset)
      it's hexadecimal, else octal.  */
   char *dot = strchr (s, '.');
   if (dot && dot[(dot[1] == 'b' || dot[1] == 'B') + 1])
-    dot = nullptr;
+    dot = NULL;
   int radix = dot ? 10 : s[0] == '0' && (s[1] == 'x' || s[1] == 'X') ? 16 : 8;
 
   if (dot)
@@ -1719,7 +1759,7 @@ main (int argc, char **argv)
 
         case 'S':
           modern = true;
-          if (optarg == nullptr)
+          if (optarg == NULL)
             string_min = 3;
           else
             {
@@ -1798,7 +1838,7 @@ main (int argc, char **argv)
 
         case 'w':
           modern = true;
-          if (optarg == nullptr)
+          if (optarg == NULL)
             {
               desired_width = 32;
             }
@@ -1950,12 +1990,12 @@ main (int argc, char **argv)
 
   /* open the first input file */
   ok = open_next_file ();
-  if (in_stream == nullptr)
+  if (in_stream == NULL)
     goto cleanup;
 
   /* skip over any unwanted header bytes */
   ok &= skip (n_bytes_to_skip);
-  if (in_stream == nullptr)
+  if (in_stream == NULL)
     goto cleanup;
 
   pseudo_offset = (flag_pseudo_start ? pseudo_start - n_bytes_to_skip : 0);

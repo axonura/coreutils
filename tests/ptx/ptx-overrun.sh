@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright (C) 2008-2025 Free Software Foundation, Inc.
+# Copyright (C) 2008-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,6 +17,10 @@
 
 . "${srcdir=.}/tests/init.sh"; path_prepend_ ./src
 print_ver_ ptx
+
+# Ensure these inputs are processed
+printf '%s' '012345678901234567890123456789🛠' | ptx || fail=1
+bad_unicode | ptx || fail=1
 
 # Trigger a heap-clobbering bug in ptx from coreutils-6.10 and earlier.
 # Using a long file name makes an abort more likely.

@@ -1,5 +1,5 @@
 /* tail -- output the last part of file(s)
-   Copyright (C) 1989-2025 Free Software Foundation, Inc.
+   Copyright (C) 1989-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -107,7 +107,7 @@ enum Follow_mode
 
 static char const *const follow_mode_string[] =
 {
-  "descriptor", "name", nullptr
+  "descriptor", "name", NULL
 };
 
 static enum Follow_mode const follow_mode_map[] =
@@ -177,7 +177,7 @@ static bool reopen_inaccessible_files;
 
 /* If true, interpret the numeric argument as the number of lines.
    Otherwise, interpret it as the number of bytes.  */
-static bool count_lines;
+static bool count_lines = true;
 
 /* Whether we follow the name of each file or the file descriptor
    that is initially associated with each name.  */
@@ -196,7 +196,7 @@ static bool from_start;
 static bool print_headers;
 
 /* Character to split lines by. */
-static char line_end;
+static char line_end = '\n';
 
 /* When to print the filename banners.  */
 enum header_mode
@@ -216,7 +216,7 @@ static count_t max_n_unchanged_stats_between_opens =
 /* The process IDs of the processes to watch (those writing the followed
    files, or perhaps other processes the user cares about).  */
 static int nbpids = 0;
-static pid_t * pids = nullptr;
+static pid_t * pids = NULL;
 static idx_t pids_alloc;
 
 /* Used to determine the buffer size when scanning backwards in a file.  */
@@ -233,6 +233,9 @@ static bool presume_input_pipe;
 /* If nonzero then don't use inotify even if available.  */
 static bool disable_inotify;
 
+/* Annotate the output with extra info to aid the user.  */
+static bool debug;
+
 /* For long options that have no equivalent short option, use a
    non-character as a pseudo short option, starting with CHAR_MAX + 1.  */
 enum
@@ -242,30 +245,32 @@ enum
   PID_OPTION,
   PRESUME_INPUT_PIPE_OPTION,
   LONG_FOLLOW_OPTION,
-  DISABLE_INOTIFY_OPTION
+  DISABLE_INOTIFY_OPTION,
+  DEBUG_PROGRAM_OPTION,
 };
 
 static struct option const long_options[] =
 {
-  {"bytes", required_argument, nullptr, 'c'},
-  {"follow", optional_argument, nullptr, LONG_FOLLOW_OPTION},
-  {"lines", required_argument, nullptr, 'n'},
-  {"max-unchanged-stats", required_argument, nullptr,
+  {"bytes", required_argument, NULL, 'c'},
+  {"debug", no_argument, NULL, DEBUG_PROGRAM_OPTION},
+  {"follow", optional_argument, NULL, LONG_FOLLOW_OPTION},
+  {"lines", required_argument, NULL, 'n'},
+  {"max-unchanged-stats", required_argument, NULL,
    MAX_UNCHANGED_STATS_OPTION},
-  {"-disable-inotify", no_argument, nullptr,
+  {"-disable-inotify", no_argument, NULL,
    DISABLE_INOTIFY_OPTION}, /* do not document */
-  {"pid", required_argument, nullptr, PID_OPTION},
-  {"-presume-input-pipe", no_argument, nullptr,
+  {"pid", required_argument, NULL, PID_OPTION},
+  {"-presume-input-pipe", no_argument, NULL,
    PRESUME_INPUT_PIPE_OPTION}, /* do not document */
-  {"quiet", no_argument, nullptr, 'q'},
-  {"retry", no_argument, nullptr, RETRY_OPTION},
-  {"silent", no_argument, nullptr, 'q'},
-  {"sleep-interval", required_argument, nullptr, 's'},
-  {"verbose", no_argument, nullptr, 'v'},
-  {"zero-terminated", no_argument, nullptr, 'z'},
+  {"quiet", no_argument, NULL, 'q'},
+  {"retry", no_argument, NULL, RETRY_OPTION},
+  {"silent", no_argument, NULL, 'q'},
+  {"sleep-interval", required_argument, NULL, 's'},
+  {"verbose", no_argument, NULL, 'v'},
+  {"zero-terminated", no_argument, NULL, 'z'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -287,50 +292,67 @@ With more than one FILE, precede each with a header giving the file name.\n\
       emit_stdin_note ();
       emit_mandatory_arg_note ();
 
-     fputs (_("\
-  -c, --bytes=[+]NUM       output the last NUM bytes; or use -c +NUM to\n\
-                             output starting with byte NUM of each file\n\
-"), stdout);
-     fputs (_("\
+     oputs (_("\
+  -c, --bytes=[+]NUM\n\
+         output the last NUM bytes;\n\
+         or use -c +NUM to output starting with byte NUM of each file\n\
+"));
+     oputs (_("\
+      --debug\n\
+         indicate which --follow implementation is used\n\
+"));
+     oputs (_("\
   -f, --follow[={name|descriptor}]\n\
-                           output appended data as the file grows;\n\
-                             an absent option argument means 'descriptor'\n\
-  -F                       same as --follow=name --retry\n\
-"), stdout);
-     printf (_("\
-  -n, --lines=[+]NUM       output the last NUM lines, instead of the last %d;\n\
-                             or use -n +NUM to skip NUM-1 lines at the start\n\
-"),
-             DEFAULT_N_LINES
-             );
-     printf (_("\
+         output appended data as the file grows;\n\
+         an absent option argument means 'descriptor'\n\
+"));
+     oputs (_("\
+  -F\n\
+         same as --follow=name --retry\n\
+"));
+     oprintf (_("\
+  -n, --lines=[+]NUM\n\
+         output the last NUM lines, instead of the last %d;\n\
+         or use -n +NUM to skip NUM-1 lines at the start\n\
+"), DEFAULT_N_LINES);
+     oprintf (_("\
       --max-unchanged-stats=N\n\
-                           with --follow=name, reopen a FILE which has not\n\
-                             changed size after N (default %d) iterations\n\
-                             to see if it has been unlinked or renamed\n\
-                             (this is the usual case of rotated log files);\n\
-                             with inotify, this option is rarely useful\n\
-"),
-             DEFAULT_MAX_N_UNCHANGED_STATS_BETWEEN_OPENS
-             );
-     fputs (_("\
-      --pid=PID            with -f, exit after PID no longer exists;\n\
-                             can be repeated to watch multiple processes\n\
-  -q, --quiet, --silent    never output headers giving file names\n\
-      --retry              keep trying to open a file if it is inaccessible\n\
-"), stdout);
-     fputs (_("\
-  -s, --sleep-interval=N   with -f, sleep for approximately N seconds\n\
-                             (default 1.0) between iterations;\n\
-                             with inotify and --pid=P, check process P at\n\
-                             least once every N seconds\n\
-  -v, --verbose            always output headers giving file names\n\
-"), stdout);
-     fputs (_("\
-  -z, --zero-terminated    line delimiter is NUL, not newline\n\
-"), stdout);
-     fputs (HELP_OPTION_DESCRIPTION, stdout);
-     fputs (VERSION_OPTION_DESCRIPTION, stdout);
+         with --follow=name, reopen a FILE which has not\n\
+         changed size after N (default %d) iterations\n\
+         to see if it has been unlinked or renamed\n\
+         (this is the usual case of rotated log files);\n\
+         with inotify, this option is rarely useful\n\
+"), DEFAULT_MAX_N_UNCHANGED_STATS_BETWEEN_OPENS);
+     oputs (_("\
+      --pid=PID\n\
+         with -f, exit after PID no longer exists;\n\
+         can be repeated to watch multiple processes\n\
+"));
+     oputs (_("\
+  -q, --quiet, --silent\n\
+         never output headers giving file names\n\
+"));
+     oputs (_("\
+      --retry\n\
+         keep trying to open a file if it is inaccessible\n\
+"));
+     oputs (_("\
+  -s, --sleep-interval=N\n\
+         with -f, sleep for approximately N seconds\n\
+         (default 1.0) between iterations;\n\
+         with inotify and --pid=P,\n\
+         check process P at least once every N seconds\n\
+"));
+     oputs (_("\
+  -v, --verbose\n\
+         always output headers giving file names\n\
+"));
+     oputs (_("\
+  -z, --zero-terminated\n\
+         line delimiter is NUL, not newline\n\
+"));
+     oputs (HELP_OPTION_DESCRIPTION);
+     oputs (VERSION_OPTION_DESCRIPTION);
      fputs (_("\
 \n\
 NUM may have a multiplier suffix:\n\
@@ -573,7 +595,7 @@ file_lines (char const *prettyname, int fd, struct stat const *sb,
         {
           char const *nl;
           nl = memrchr (buffer, line_end, n);
-          if (nl == nullptr)
+          if (nl == NULL)
             break;
           n = nl - buffer;
           if (n_lines-- == 0)
@@ -635,7 +657,7 @@ pipe_lines (char const *prettyname, int fd, count_t n_lines)
 
   first = last = xmalloc (sizeof (LBUFFER));
   first->nbytes = first->nlines = 0;
-  first->next = nullptr;
+  first->next = NULL;
   tmp = xmalloc (sizeof (LBUFFER));
 
   /* Input is always read into a fresh buffer.  */
@@ -646,7 +668,7 @@ pipe_lines (char const *prettyname, int fd, count_t n_lines)
         break;
       tmp->nbytes = n_read;
       tmp->nlines = 0;
-      tmp->next = nullptr;
+      tmp->next = NULL;
 
       /* Count the number of newlines just read.  */
       {
@@ -725,8 +747,7 @@ pipe_lines (char const *prettyname, int fd, count_t n_lines)
       {
         /* Skip 'total_lines' - 'n_lines' newlines.  We made sure that
            'total_lines' - 'n_lines' <= 'tmp->nlines'.  */
-        idx_t j;
-        for (j = total_lines - n_lines; j; --j)
+        for (idx_t j = total_lines - n_lines; j; --j)
           {
             beg = rawmemchr (beg, line_end);
             ++beg;
@@ -777,7 +798,7 @@ pipe_bytes (char const *prettyname, int fd, count_t n_bytes,
 
   first = last = xmalloc (sizeof (CBUFFER));
   first->nbytes = 0;
-  first->next = nullptr;
+  first->next = NULL;
   tmp = xmalloc (sizeof (CBUFFER));
 
   /* Input is always read into a fresh buffer.  */
@@ -788,7 +809,7 @@ pipe_bytes (char const *prettyname, int fd, count_t n_bytes,
         break;
       read_pos += n_read;
       tmp->nbytes = n_read;
-      tmp->next = nullptr;
+      tmp->next = NULL;
 
       total_bytes += tmp->nbytes;
       /* If there is enough room in the last buffer read, just append the new
@@ -1154,11 +1175,21 @@ tail_forever (struct File_spec *f, int n_files, double sleep_interval)
 {
   int last = n_files - 1;
 
+  static bool debugged;
+
   while (true)
     {
       /* Use blocking I/O as an optimization, when it's easy.  */
       bool blocking = (!nbpids && follow_mode == Follow_descriptor
                        && n_files == 1 && 0 <= f[0].fd && !S_ISREG (f[0].mode));
+
+      if (debug && !debugged)
+        {
+          debugged = true;
+          error (0, 0, "%s", blocking
+                             ? _("using blocking mode")
+                             : _("using polling mode"));
+        }
 
       bool any_input = false;
 
@@ -1469,8 +1500,8 @@ tail_forever_inotify (int wd, struct File_spec *f, int n_files,
   char *evbuf;
   idx_t evbuf_off = 0;
 
-  wd_to_name = hash_initialize (n_files, nullptr, wd_hasher, wd_comparator,
-                                nullptr);
+  wd_to_name = hash_initialize (n_files, NULL, wd_hasher, wd_comparator,
+                                NULL);
   if (! wd_to_name)
     xalloc_die ();
   *wd_to_namep = wd_to_name;
@@ -1543,7 +1574,7 @@ tail_forever_inotify (int wd, struct File_spec *f, int n_files,
               continue;
             }
 
-          if (hash_insert (wd_to_name, &(f[i])) == nullptr)
+          if (hash_insert (wd_to_name, &(f[i])) == NULL)
             xalloc_die ();
 
           found_watchable_file = true;
@@ -1593,6 +1624,9 @@ tail_forever_inotify (int wd, struct File_spec *f, int n_files,
           check_fspec (&f[i], &prev_fspec);
         }
     }
+
+  if (debug)
+    error (0, 0, "%s", _("using notification mode"));
 
   evlen += sizeof (struct inotify_event) + 1;
   evbuf = ximalloc (evlen);
@@ -1650,7 +1684,7 @@ tail_forever_inotify (int wd, struct File_spec *f, int n_files,
               pfd[1].events = pfd[1].revents = 0;
               file_change = poll (pfd, monitor_output + 1, delay);
             }
-          while (file_change == 0);
+          while (file_change == 0 || (file_change < 0 && errno == EINTR));
 
           if (file_change < 0)
             error (EXIT_FAILURE, errno,
@@ -1768,7 +1802,7 @@ tail_forever_inotify (int wd, struct File_spec *f, int n_files,
                   close_fd (prev->fd, prev);
                 }
 
-              if (hash_insert (wd_to_name, fspec) == nullptr)
+              if (hash_insert (wd_to_name, fspec) == NULL)
                 xalloc_die ();
             }
 
@@ -2147,7 +2181,7 @@ parse_options (int argc, char **argv,
   int c;
 
   while ((c = getopt_long (argc, argv, "c:n:fFqs:vz0123456789",
-                           long_options, nullptr))
+                           long_options, NULL))
          != -1)
     {
       switch (c)
@@ -2176,7 +2210,7 @@ parse_options (int argc, char **argv,
         case 'f':
         case LONG_FOLLOW_OPTION:
           forever = true;
-          if (optarg == nullptr)
+          if (optarg == NULL)
             follow_mode = DEFAULT_FOLLOW_MODE;
           else
             follow_mode = XARGMATCH ("--follow", optarg,
@@ -2194,6 +2228,10 @@ parse_options (int argc, char **argv,
                         _("invalid maximum number of unchanged stats"
                           " between opens"),
                         0, XTOINT_MAX_QUIET);
+          break;
+
+        case DEBUG_PROGRAM_OPTION:
+          debug = true;
           break;
 
         case DISABLE_INOTIFY_OPTION:
@@ -2269,7 +2307,7 @@ parse_options (int argc, char **argv,
                : ("warning: PID ignored;"
                   " --pid=PID is useful only when following")));
       free (pids);
-      pids = nullptr;
+      pids = NULL;
     }
 }
 
@@ -2338,11 +2376,6 @@ main (int argc, char **argv)
     page_size = p;
   }
 
-  have_read_stdin = false;
-
-  count_lines = true;
-  forever = from_start = print_headers = false;
-  line_end = '\n';
   obsolete_option = parse_obsolete_option (argc, argv, &n_units);
   argc -= obsolete_option;
   argv += obsolete_option;

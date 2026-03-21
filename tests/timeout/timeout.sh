@@ -1,7 +1,7 @@
 #!/bin/sh
 # Validate timeout basic operation
 
-# Copyright (C) 2008-2025 Free Software Foundation, Inc.
+# Copyright (C) 2008-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -56,13 +56,18 @@ returns_ 124 timeout --foreground -s0 -k1 .1 sleep 10 && fail=1
 ) || fail=1
 
 # Don't be confused when starting off with a child (Bug#9098).
-out=$(sleep .1 & exec timeout .5 sh -c 'sleep 2; echo foo')
-status=$?
-test "$out" = "" && test $status = 124 || fail=1
+# Use setsid to avoid sleep being in the test's process group, as
+# upon reparenting it can trigger an orphaned process group SIGHUP
+# (if there were stopped processes like in tests/tail/overlay-headers.sh).
+if setsid true; then
+  out=$(setsid sleep .1 & exec timeout .5 sh -c 'sleep 2; echo foo')
+  status=$?
+  test "$out" = "" && test $status = 124 || fail=1
+fi
 
 # Verify --verbose output
 cat > exp <<\EOF
-timeout: sending signal EXIT to command 'sleep'
+timeout: sending signal 0 to command 'sleep'
 timeout: sending signal KILL to command 'sleep'
 EOF
 for opt in -v --verbose; do
@@ -70,5 +75,16 @@ for opt in -v --verbose; do
   sed '/^Killed/d' < errt > err || framework_failure_
   compare exp err || fail=1
 done
+
+# Ensure we propagate all terminating signals.
+# Specifically here we're testing that SIGPIPE is handled.
+# I.e., that we're not killed by the SIGPIPE (and leave the sleep running).
+# timeout would exit with 141 usually if SIGPIPE wasn't being handled.
+echo 124 > timeout.exp || framework_failure_
+{ timeout -v .1 sleep 10 2>&1; echo $? >timeout.status; } | :
+compare timeout.exp timeout.status || fail=1
+# Ensure we don't catch/propagate ignored signals
+(trap '' PIPE && timeout 10 yes |:) 2>&1 |
+  grep 'Broken pipe' >/dev/null || fail=1
 
 Exit $fail

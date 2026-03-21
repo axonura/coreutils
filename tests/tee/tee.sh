@@ -1,7 +1,7 @@
 #!/bin/sh
 # test for basic tee functionality.
 
-# Copyright (C) 2005-2025 Free Software Foundation, Inc.
+# Copyright (C) 2005-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -97,7 +97,7 @@ read_fifo_delayed & pid=$!
 dd count=20 bs=100K if=/dev/zero status=none |
 {
   dd count=0 oflag=nonblock status=none
-  tee || { cleanup_; touch tee.fail; }
+  timeout 10 tee || { cleanup_; touch tee.fail; }
 } >fifo
 test -f tee.fail && fail=1 || cleanup_
 

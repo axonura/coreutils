@@ -1,5 +1,5 @@
 /* chown-core.c -- core functions for changing ownership.
-   Copyright (C) 2000-2025 Free Software Foundation, Inc.
+   Copyright (C) 2000-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -58,12 +58,12 @@ extern void
 chopt_init (struct Chown_option *chopt)
 {
   chopt->verbosity = V_off;
-  chopt->root_dev_ino = nullptr;
+  chopt->root_dev_ino = NULL;
   chopt->affect_symlink_referent = true;
   chopt->recurse = false;
   chopt->force_silent = false;
-  chopt->user_name = nullptr;
-  chopt->group_name = nullptr;
+  chopt->user_name = NULL;
+  chopt->group_name = NULL;
 }
 
 extern void
@@ -122,7 +122,7 @@ uid_to_name (uid_t uid)
 static char *
 user_group_str (char const *user, char const *group)
 {
-  char *spec = nullptr;
+  char *spec = NULL;
 
   if (user)
     {
@@ -153,10 +153,6 @@ describe_change (char const *file, enum Change_status changed,
                  char const *old_user, char const *old_group,
                  char const *user, char const *group)
 {
-  char const *fmt;
-  char *old_spec;
-  char *spec;
-
   if (changed == CH_NOT_APPLIED)
     {
       printf (_("neither symbolic link %s nor referent has been changed\n"),
@@ -164,10 +160,11 @@ describe_change (char const *file, enum Change_status changed,
       return;
     }
 
-  spec = user_group_str (user, group);
-  old_spec = user_group_str (user ? old_user : nullptr,
-                             group ? old_group : nullptr);
+  char *spec = user_group_str (user, group);
+  char *old_spec = user_group_str (user ? old_user : NULL,
+                                   group ? old_group : NULL);
 
+  char const *fmt;
   switch (changed)
     {
     case CH_SUCCEEDED:
@@ -189,7 +186,7 @@ describe_change (char const *file, enum Change_status changed,
                  : _("failed to change ownership of %s\n"));
           free (old_spec);
           old_spec = spec;
-          spec = nullptr;
+          spec = NULL;
         }
       break;
     case CH_NO_CHANGE_REQUESTED:
@@ -232,14 +229,10 @@ restricted_chown (int cwd_fd, char const *file,
                   uid_t uid, gid_t gid,
                   uid_t required_uid, gid_t required_gid)
 {
-  enum RCH_status status = RC_ok;
-  struct stat st;
-  int open_flags = O_NONBLOCK | O_NOCTTY;
-  int fd;
-
   if (required_uid == (uid_t) -1 && required_gid == (gid_t) -1)
     return RC_do_ordinary_chown;
 
+  int open_flags = O_NONBLOCK | O_NOCTTY;
   if (! S_ISREG (orig_st->st_mode))
     {
       if (S_ISDIR (orig_st->st_mode))
@@ -248,12 +241,14 @@ restricted_chown (int cwd_fd, char const *file,
         return RC_do_ordinary_chown;
     }
 
-  fd = openat (cwd_fd, file, O_RDONLY | open_flags);
+  int fd = openat (cwd_fd, file, O_RDONLY | open_flags);
   if (! (0 <= fd
          || (errno == EACCES && S_ISREG (orig_st->st_mode)
              && 0 <= (fd = openat (cwd_fd, file, O_WRONLY | open_flags)))))
     return (errno == EACCES ? RC_do_ordinary_chown : RC_error);
 
+  enum RCH_status status = RC_ok;
+  struct stat st;
   if (fstat (fd, &st) != 0)
     status = RC_error;
   else if (! psame_inode (orig_st, &st))
@@ -288,11 +283,7 @@ change_file_owner (FTS *fts, FTSENT *ent,
 {
   char const *file_full_name = ent->fts_path;
   char const *file = ent->fts_accpath;
-  struct stat const *file_stats;
-  struct stat stat_buf;
   bool ok = true;
-  bool do_chown;
-  bool symlink_changed = true;
 
   switch (ent->fts_info)
     {
@@ -327,7 +318,7 @@ change_file_owner (FTS *fts, FTSENT *ent,
          accessible when control reaches this point.  So, if this is
          the first time we've seen the FTS_NS for this file, tell
          fts_read to stat it "again".  */
-      if (ent->fts_level == 0 && ent->fts_number == 0)
+      if (ent->fts_level == FTS_ROOTLEVEL && ent->fts_number == 0)
         {
           ent->fts_number = 1;
           fts_set (fts, ent, FTS_AGAIN);
@@ -364,10 +355,13 @@ change_file_owner (FTS *fts, FTSENT *ent,
       break;
     }
 
+  bool do_chown;
+  struct stat stat_buf;
+  struct stat const *file_stats;
   if (!ok)
     {
       do_chown = false;
-      file_stats = nullptr;
+      file_stats = NULL;
     }
   else if (required_uid == (uid_t) -1 && required_gid == (gid_t) -1
            && chopt->verbosity == V_off
@@ -412,6 +406,7 @@ change_file_owner (FTS *fts, FTSENT *ent,
       return false;
     }
 
+  bool symlink_changed = true;
   if (do_chown)
     {
       if ( ! chopt->affect_symlink_referent)
@@ -496,15 +491,15 @@ change_file_owner (FTS *fts, FTSENT *ent,
              : !changed ? CH_NO_CHANGE_REQUESTED
              : CH_SUCCEEDED);
           char *old_usr = (file_stats
-                           ? uid_to_name (file_stats->st_uid) : nullptr);
+                           ? uid_to_name (file_stats->st_uid) : NULL);
           char *old_grp = (file_stats
-                           ? gid_to_name (file_stats->st_gid) : nullptr);
+                           ? gid_to_name (file_stats->st_gid) : NULL);
           char *new_usr = chopt->user_name
                           ? chopt->user_name : uid != -1
-                                               ? uid_to_str (uid) : nullptr;
+                                               ? uid_to_str (uid) : NULL;
           char *new_grp = chopt->group_name
                           ? chopt->group_name : gid != -1
-                                               ? gid_to_str (gid) : nullptr;
+                                               ? gid_to_str (gid) : NULL;
           describe_change (file_full_name, ch_status,
                            old_usr, old_grp,
                            new_usr, new_grp);
@@ -547,14 +542,13 @@ chown_files (char **files, int bit_flags,
                     ? 0
                     : FTS_NOSTAT);
 
-  FTS *fts = xfts_open (files, bit_flags | stat_flags, nullptr);
+  FTS *fts = xfts_open (files, bit_flags | stat_flags, NULL);
 
   while (true)
     {
-      FTSENT *ent;
+      FTSENT *ent = fts_read (fts);
 
-      ent = fts_read (fts);
-      if (ent == nullptr)
+      if (ent == NULL)
         {
           if (errno != 0)
             {

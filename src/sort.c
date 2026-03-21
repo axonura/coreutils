@@ -1,5 +1,5 @@
 /* sort - sort lines of text (with all kinds of options).
-   Copyright (C) 1988-2025 Free Software Foundation, Inc.
+   Copyright (C) 1988-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -22,19 +22,20 @@
 
 #include <config.h>
 
-#include <ctype.h>
 #include <getopt.h>
 #include <pthread.h>
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <spawn.h>
 #include "system.h"
 #include "argmatch.h"
 #include "assure.h"
 #include "c-ctype.h"
 #include "fadvise.h"
 #include "filevercmp.h"
+#include "findprog.h"
 #include "flexmember.h"
 #include "hard-locale.h"
 #include "hash.h"
@@ -49,6 +50,8 @@
 #include "readtokens0.h"
 #include "stdlib--.h"
 #include "strnumcmp.h"
+#include "term-sig.h"
+#include "unistd--.h"
 #include "xmemcoll.h"
 #include "xnanosleep.h"
 #include "xstrtol.h"
@@ -68,18 +71,6 @@ struct rlimit { size_t rlim_cur; };
 
 #if HAVE_LANGINFO_CODESET
 # include <langinfo.h>
-#endif
-
-/* Use SA_NOCLDSTOP as a proxy for whether the sigaction machinery is
-   present.  */
-#ifndef SA_NOCLDSTOP
-# define SA_NOCLDSTOP 0
-/* No sigprocmask.  Always 'return' zero. */
-# define sigprocmask(How, Set, Oset) (0)
-# define sigset_t int
-# if ! HAVE_SIGINTERRUPT
-#  define siginterrupt(sig, flag) /* empty */
-# endif
 #endif
 
 #if !defined OPEN_MAX && defined NR_OPEN
@@ -129,16 +120,16 @@ enum
 
 enum
   {
-    /* The number of times we should try to fork a compression process
-       (we retry if the fork call fails).  We don't _need_ to compress
-       temp files, this is just to reduce file system access, so this number
-       can be small.  Each retry doubles in duration.  */
-    MAX_FORK_TRIES_COMPRESS = 4,
+    /* The number of times we should try to spawn a compression process
+       (we retry if the posix_spawnp call fails with EAGAIN).  We don't _need_
+       to compress temp files, this is just to reduce file system access, so
+       this number can be small.  Each retry doubles in duration.  */
+    MAX_TRIES_COMPRESS = 4,
 
-    /* The number of times we should try to fork a decompression process.
-       If we can't fork a decompression process, we can't sort, so this
+    /* The number of times we should try to spawn a decompression process.
+       If we can't spawn a decompression process, we can't sort, so this
        number should be big.  Each retry doubles in duration.  */
-    MAX_FORK_TRIES_DECOMPRESS = 9
+    MAX_TRIES_DECOMPRESS = 9
   };
 
 enum
@@ -370,31 +361,39 @@ static bool debug;
    number are present, temp files will be used. */
 static unsigned int nmerge = NMERGE_DEFAULT;
 
-/* Output an error to stderr and exit using async-signal-safe routines.
-   This can be used safely from signal handlers,
-   and between fork and exec of multithreaded processes.  */
+/* Whether SIGPIPE had the default disposition at startup.  */
+static bool default_SIGPIPE;
 
-static _Noreturn void
-async_safe_die (int errnum, char const *errstr)
+/* The list of temporary files. */
+struct tempnode
 {
-  ignore_value (write (STDERR_FILENO, errstr, strlen (errstr)));
+  struct tempnode *volatile next;
+  pid_t pid;     /* The subprocess PID; undefined if state == UNCOMPRESSED.  */
+  char state;
+  char name[FLEXIBLE_ARRAY_MEMBER];
+};
+static struct tempnode *volatile temphead;
+static struct tempnode *volatile *temptail = &temphead;
 
-  /* Even if defined HAVE_STRERROR_R, we can't use it,
-     as it may return a translated string etc. and even if not
-     may call malloc which is unsafe.  We might improve this
-     by testing for sys_errlist and using that if available.
-     For now just report the error number.  */
-  if (errnum)
-    {
-      char errbuf[INT_BUFSIZE_BOUND (errnum)];
-      char *p = inttostr (errnum, errbuf);
-      ignore_value (write (STDERR_FILENO, ": errno ", 8));
-      ignore_value (write (STDERR_FILENO, p, strlen (p)));
-    }
+/* Clean up any remaining temporary files.  */
 
-  ignore_value (write (STDERR_FILENO, "\n", 1));
+static void
+cleanup (void)
+{
+  for (struct tempnode const *node = temphead; node; node = node->next)
+    unlink (node->name);
+  temphead = NULL;
+}
 
-  _exit (SORT_FAILURE);
+/* Handle interrupts and hangups. */
+
+static void
+sighandler (int sig)
+{
+  cleanup ();
+
+  signal (sig, SIG_DFL);
+  raise (sig);
 }
 
 /* Report MESSAGE for FILE, then clean up and exit.
@@ -403,6 +402,11 @@ async_safe_die (int errnum, char const *errstr)
 static void
 sort_die (char const *message, char const *file)
 {
+  /* If we got EPIPE writing to stdout (from a previous fwrite() or fclose()
+     and SIGPIPE was originally SIG_DFL, mimic standard SIGPIPE behavior.  */
+  if (errno == EPIPE && !file && default_SIGPIPE)
+    sighandler (SIGPIPE);
+
   error (SORT_FAILURE, errno, "%s: %s", message,
          quotef (file ? file : _("standard output")));
 }
@@ -430,82 +434,137 @@ Write sorted concatenation of all FILE(s) to standard output.\n\
 Ordering options:\n\
 \n\
 "), stdout);
+      oputs (_("\
+  -b, --ignore-leading-blanks\n\
+         ignore leading blanks when finding sort keys in each line\n\
+"));
+      oputs (_("\
+  -d, --dictionary-order\n\
+         consider only blanks and alphanumeric characters\n\
+"));
+      oputs (_("\
+  -f, --ignore-case\n\
+         fold lower case to upper case characters\n\
+"));
+      oputs (_("\
+  -g, --general-numeric-sort\n\
+         compare according to general numerical value\n\
+"));
+      oputs (_("\
+  -i, --ignore-nonprinting\n\
+         consider only printable characters\n\
+"));
+      oputs (_("\
+  -M, --month-sort\n\
+         compare (unknown) < 'JAN' < ... < 'DEC'\n\
+"));
+      oputs (_("\
+  -h, --human-numeric-sort\n\
+         compare human readable numbers (e.g., 2K 1G)\n\
+"));
+      oputs (_("\
+  -n, --numeric-sort\n\
+         compare according to string numerical value;\n\
+         see full documentation for supported strings\n\
+"));
+      oputs (_("\
+  -R, --random-sort\n\
+         shuffle, but group identical keys.  See also shuf(1)\n\
+"));
+      oputs (_("\
+      --random-source=FILE\n\
+         get random bytes from FILE\n\
+"));
+      oputs (_("\
+  -r, --reverse\n\
+         reverse the result of comparisons\n\
+"));
+      oputs (_("\
+      --sort=WORD\n\
+         sort according to WORD:\n\
+           general-numeric -g, human-numeric -h, month -M,\n\
+           numeric -n, random -R, version -V\n\
+"));
+      oputs (_("\
+  -V, --version-sort\n\
+         natural sort of (version) numbers within text\n\
+"));
       fputs (_("\
-  -b, --ignore-leading-blanks  ignore leading blanks\n\
-  -d, --dictionary-order      consider only blanks and alphanumeric characters\
 \n\
-  -f, --ignore-case           fold lower case to upper case characters\n\
-"), stdout);
-      fputs (_("\
-  -g, --general-numeric-sort  compare according to general numerical value\n\
-  -i, --ignore-nonprinting    consider only printable characters\n\
-  -M, --month-sort            compare (unknown) < 'JAN' < ... < 'DEC'\n\
-"), stdout);
-      fputs (_("\
-  -h, --human-numeric-sort    compare human readable numbers (e.g., 2K 1G)\n\
-"), stdout);
-      fputs (_("\
-  -n, --numeric-sort          compare according to string numerical value;\n\
-                                see full documentation for supported strings\n\
-"), stdout);
-      fputs (_("\
-  -R, --random-sort           shuffle, but group identical keys.  See shuf(1)\n\
-      --random-source=FILE    get random bytes from FILE\n\
-  -r, --reverse               reverse the result of comparisons\n\
-"), stdout);
-      fputs (_("\
-      --sort=WORD             sort according to WORD:\n\
-                                general-numeric -g, human-numeric -h, month -M,\
-\n\
-                                numeric -n, random -R, version -V\n\
-  -V, --version-sort          natural sort of (version) numbers within text\n\
-\n\
-"), stdout);
-      fputs (_("\
 Other options:\n\
 \n\
 "), stdout);
-      fputs (_("\
-      --batch-size=NMERGE   merge at most NMERGE inputs at once;\n\
-                            for more use temp files\n\
-"), stdout);
-      fputs (_("\
-  -c, --check, --check=diagnose-first  check for sorted input; do not sort\n\
-  -C, --check=quiet, --check=silent  like -c, but do not report first bad line\
+      oputs (_("\
+      --batch-size=NMERGE\n\
+         merge at most NMERGE inputs at once; for more use temp files\n\
+"));
+      oputs (_("\
+  -c, --check, --check=diagnose-first\n\
+         check for sorted input; do not sort\n\
+"));
+      oputs (_("\
+  -C, --check=quiet, --check=silent\n\
+         like -c, but do not report first bad line\n\
+"));
+      oputs (_("\
+      --compress-program=PROG\n\
+         compress temporaries with PROG; decompress them with PROG -d\n\
+"));
+      oputs (_("\
+      --debug\n\
+         annotate the part of the line used to sort,\n\
+         and warn about questionable usage to standard error\n\
+"));
+      oputs (_("\
+      --files0-from=F\n\
+         read input from the files specified by NUL-terminated names in file F;\
 \n\
-      --compress-program=PROG  compress temporaries with PROG;\n\
-                              decompress them with PROG -d\n\
-"), stdout);
-      fputs (_("\
-      --debug               annotate the part of the line used to sort, and\n\
-                              warn about questionable usage to standard error\n\
-      --files0-from=F       read input from the files specified by\n\
-                            NUL-terminated names in file F;\n\
-                            If F is - then read names from standard input\n\
-"), stdout);
-      fputs (_("\
-  -k, --key=KEYDEF          sort via a key; KEYDEF gives location and type\n\
-  -m, --merge               merge already sorted files; do not sort\n\
-"), stdout);
-      fputs (_("\
-  -o, --output=FILE         write result to FILE instead of standard output\n\
-  -s, --stable              stabilize sort by disabling last-resort comparison\
-\n\
-  -S, --buffer-size=SIZE    use SIZE for main memory buffer\n\
-"), stdout);
-      printf (_("\
-  -t, --field-separator=SEP  use SEP instead of non-blank to blank transition\n\
-  -T, --temporary-directory=DIR  use DIR for temporaries, not $TMPDIR or %s;\n\
-                              multiple options specify multiple directories\n\
-      --parallel=N          change the number of sorts run concurrently to N\n\
-  -u, --unique              output only the first of lines with equal keys;\n\
-                              with -c, check for strict ordering\n\
+         If F is -, read names from standard input\n\
+"));
+      oputs (_("\
+  -k, --key=KEYDEF\n\
+         sort via a key; KEYDEF gives location and type\n\
+"));
+      oputs (_("\
+  -m, --merge\n\
+         merge already sorted files; do not sort\n\
+"));
+      oputs (_("\
+  -o, --output=FILE\n\
+         write result to FILE instead of standard output\n\
+"));
+      oputs (_("\
+  -s, --stable\n\
+         stabilize sort by disabling last-resort comparison\n\
+"));
+      oputs (_("\
+  -S, --buffer-size=SIZE\n\
+         use SIZE for main memory buffer\n\
+"));
+      oputs (_("\
+  -t, --field-separator=SEP\n\
+         use SEP instead of non-blank to blank transition\n\
+"));
+      oprintf (_("\
+  -T, --temporary-directory=DIR\n\
+         use DIR for temporaries, not $TMPDIR or %s;\n\
+         multiple options specify multiple directories\n\
 "), DEFAULT_TMPDIR);
-      fputs (_("\
-  -z, --zero-terminated     line delimiter is NUL, not newline\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+      --parallel=N\n\
+         change the number of sorts run concurrently to N\n\
+"));
+      oputs (_("\
+  -u, --unique\n\
+         output only the first of lines with equal keys;\n\
+         with -c, check for strict ordering\n\
+"));
+      oputs (_("\
+  -z, --zero-terminated\n\
+         line delimiter is NUL, not newline\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       fputs (_("\
 \n\
 KEYDEF is F[.C][OPTS][,F[.C][OPTS]] for start and stop position, where F is a\n\
@@ -551,37 +610,37 @@ static char const short_options[] = "-bcCdfghik:mMno:rRsS:t:T:uVy:z";
 
 static struct option const long_options[] =
 {
-  {"ignore-leading-blanks", no_argument, nullptr, 'b'},
-  {"check", optional_argument, nullptr, CHECK_OPTION},
-  {"compress-program", required_argument, nullptr, COMPRESS_PROGRAM_OPTION},
-  {"debug", no_argument, nullptr, DEBUG_PROGRAM_OPTION},
-  {"dictionary-order", no_argument, nullptr, 'd'},
-  {"ignore-case", no_argument, nullptr, 'f'},
-  {"files0-from", required_argument, nullptr, FILES0_FROM_OPTION},
-  {"general-numeric-sort", no_argument, nullptr, 'g'},
-  {"ignore-nonprinting", no_argument, nullptr, 'i'},
-  {"key", required_argument, nullptr, 'k'},
-  {"merge", no_argument, nullptr, 'm'},
-  {"month-sort", no_argument, nullptr, 'M'},
-  {"numeric-sort", no_argument, nullptr, 'n'},
-  {"human-numeric-sort", no_argument, nullptr, 'h'},
-  {"version-sort", no_argument, nullptr, 'V'},
-  {"random-sort", no_argument, nullptr, 'R'},
-  {"random-source", required_argument, nullptr, RANDOM_SOURCE_OPTION},
-  {"sort", required_argument, nullptr, SORT_OPTION},
-  {"output", required_argument, nullptr, 'o'},
-  {"reverse", no_argument, nullptr, 'r'},
-  {"stable", no_argument, nullptr, 's'},
-  {"batch-size", required_argument, nullptr, NMERGE_OPTION},
-  {"buffer-size", required_argument, nullptr, 'S'},
-  {"field-separator", required_argument, nullptr, 't'},
-  {"temporary-directory", required_argument, nullptr, 'T'},
-  {"unique", no_argument, nullptr, 'u'},
-  {"zero-terminated", no_argument, nullptr, 'z'},
-  {"parallel", required_argument, nullptr, PARALLEL_OPTION},
+  {"ignore-leading-blanks", no_argument, NULL, 'b'},
+  {"check", optional_argument, NULL, CHECK_OPTION},
+  {"compress-program", required_argument, NULL, COMPRESS_PROGRAM_OPTION},
+  {"debug", no_argument, NULL, DEBUG_PROGRAM_OPTION},
+  {"dictionary-order", no_argument, NULL, 'd'},
+  {"ignore-case", no_argument, NULL, 'f'},
+  {"files0-from", required_argument, NULL, FILES0_FROM_OPTION},
+  {"general-numeric-sort", no_argument, NULL, 'g'},
+  {"ignore-nonprinting", no_argument, NULL, 'i'},
+  {"key", required_argument, NULL, 'k'},
+  {"merge", no_argument, NULL, 'm'},
+  {"month-sort", no_argument, NULL, 'M'},
+  {"numeric-sort", no_argument, NULL, 'n'},
+  {"human-numeric-sort", no_argument, NULL, 'h'},
+  {"version-sort", no_argument, NULL, 'V'},
+  {"random-sort", no_argument, NULL, 'R'},
+  {"random-source", required_argument, NULL, RANDOM_SOURCE_OPTION},
+  {"sort", required_argument, NULL, SORT_OPTION},
+  {"output", required_argument, NULL, 'o'},
+  {"reverse", no_argument, NULL, 'r'},
+  {"stable", no_argument, NULL, 's'},
+  {"batch-size", required_argument, NULL, NMERGE_OPTION},
+  {"buffer-size", required_argument, NULL, 'S'},
+  {"field-separator", required_argument, NULL, 't'},
+  {"temporary-directory", required_argument, NULL, 'T'},
+  {"unique", no_argument, NULL, 'u'},
+  {"zero-terminated", no_argument, NULL, 'z'},
+  {"parallel", required_argument, NULL, PARALLEL_OPTION},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0},
+  {NULL, 0, NULL, 0},
 };
 
 #define CHECK_TABLE \
@@ -592,7 +651,7 @@ static struct option const long_options[] =
 static char const *const check_args[] =
 {
 #define _ct_(_s, _c) _s,
-  CHECK_TABLE nullptr
+  CHECK_TABLE NULL
 #undef  _ct_
 };
 static char const check_types[] =
@@ -613,7 +672,7 @@ static char const check_types[] =
 static char const *const sort_args[] =
 {
 #define _st_(_s, _c) _s,
-  SORT_TABLE nullptr
+  SORT_TABLE NULL
 #undef  _st_
 };
 static char const sort_types[] =
@@ -648,7 +707,7 @@ cs_leave (struct cs_status const *status)
   if (status->valid)
     {
       /* Ignore failure when restoring the signal mask. */
-      pthread_sigmask (SIG_SETMASK, &status->sigs, nullptr);
+      pthread_sigmask (SIG_SETMASK, &status->sigs, NULL);
     }
 }
 
@@ -656,17 +715,6 @@ cs_leave (struct cs_status const *status)
    is unreaped or reaped, depending on whether 'sort' has waited for
    the subprocess to finish.  */
 enum { UNCOMPRESSED, UNREAPED, REAPED };
-
-/* The list of temporary files. */
-struct tempnode
-{
-  struct tempnode *volatile next;
-  pid_t pid;     /* The subprocess PID; undefined if state == UNCOMPRESSED.  */
-  char state;
-  char name[FLEXIBLE_ARRAY_MEMBER];
-};
-static struct tempnode *volatile temphead;
-static struct tempnode *volatile *temptail = &temphead;
 
 /* A file to be sorted.  */
 struct sortfile
@@ -738,10 +786,10 @@ register_proc (struct tempnode *temp)
 {
   if (! proctab)
     {
-      proctab = hash_initialize (INIT_PROCTAB_SIZE, nullptr,
+      proctab = hash_initialize (INIT_PROCTAB_SIZE, NULL,
                                  proctab_hasher,
                                  proctab_comparator,
-                                 nullptr);
+                                 NULL);
       if (! proctab)
         xalloc_die ();
     }
@@ -806,18 +854,6 @@ reap_all (void)
     reap (-1);
 }
 
-/* Clean up any remaining temporary files.  */
-
-static void
-cleanup (void)
-{
-  struct tempnode const *node;
-
-  for (node = temphead; node; node = node->next)
-    unlink (node->name);
-  temphead = nullptr;
-}
-
 /* Cleanup actions to take when exiting.  */
 
 static void
@@ -838,7 +874,7 @@ exit_cleanup (void)
 
 /* Create a new temporary file, returning its newly allocated tempnode.
    Store into *PFD the file descriptor open for writing.
-   If the creation fails, return nullptr and store -1 into *PFD if the
+   If the creation fails, return NULL and store -1 into *PFD if the
    failure is due to file descriptor exhaustion and
    SURVIVE_FD_EXHAUSTION; otherwise, die.  */
 
@@ -858,7 +894,7 @@ create_temp_file (int *pfd, bool survive_fd_exhaustion)
 
   memcpy (file, temp_dir, len);
   memcpy (file + len, slashbase, sizeof slashbase);
-  node->next = nullptr;
+  node->next = NULL;
   if (++temp_dir_index == temp_dir_count)
     temp_dir_index = 0;
 
@@ -880,14 +916,14 @@ create_temp_file (int *pfd, bool survive_fd_exhaustion)
         error (SORT_FAILURE, errno, _("cannot create temporary file in %s"),
                quoteaf (temp_dir));
       free (node);
-      node = nullptr;
+      node = NULL;
     }
 
   *pfd = fd;
   return node;
 }
 
-/* Return a pointer to stdout status, or nullptr on failure.  */
+/* Return a pointer to stdout status, or NULL on failure.  */
 
 static struct stat *
 get_outstatus (void)
@@ -896,7 +932,7 @@ get_outstatus (void)
   static struct stat outstat;
   if (outstat_errno == 0)
     outstat_errno = fstat (STDOUT_FILENO, &outstat) == 0 ? -1 : errno;
-  return outstat_errno < 0 ? &outstat : nullptr;
+  return outstat_errno < 0 ? &outstat : NULL;
 }
 
 /* Return a stream for FILE, opened with mode HOW.  If HOW is "w",
@@ -904,7 +940,7 @@ get_outstatus (void)
    truncated unless FILE is null.  When opening for input, "-"
    means standard input.  To avoid confusion, do not return file
    descriptors STDIN_FILENO, STDOUT_FILENO, or STDERR_FILENO when
-   opening an ordinary FILE.  Return nullptr if unsuccessful.
+   opening an ordinary FILE.  Return NULL if unsuccessful.
 
    Use fadvise to specify an access pattern for input files.
    There are a few hints we could possibly provide,
@@ -962,7 +998,7 @@ stream_open (char const *file, char const *how)
       else
         {
           int fd = open (file, O_RDONLY | O_CLOEXEC);
-          fp = fd < 0 ? nullptr : fdopen (fd, how);
+          fp = fd < 0 ? NULL : fdopen (fd, how);
         }
       fadvise (fp, FADVISE_SEQUENTIAL);
     }
@@ -1034,23 +1070,115 @@ move_fd (int oldfd, int newfd)
     }
 }
 
-/* Fork a child process for piping to and do common cleanup.  The
-   TRIES parameter specifies how many times to try to fork before
-   giving up.  Return the PID of the child, or -1 (setting errno)
-   on failure. */
+/* Setup ACTION to move OLDFD to NEWFD.  If OLDFD != NEWFD, NEWFD is not
+   close-on-exec.  Returns 0 if successful, or an error number otherwise.  */
 
-static pid_t
-pipe_fork (int pipefds[2], size_t tries)
+static int
+posix_spawn_file_actions_move_fd (posix_spawn_file_actions_t *actions,
+                                  int oldfd, int newfd)
 {
-#if HAVE_WORKING_FORK
+  int result = 0;
+  if (oldfd != newfd)
+    {
+      result = posix_spawn_file_actions_adddup2 (actions, oldfd, newfd);
+      if (result == 0)
+        result = posix_spawn_file_actions_addclose (actions, oldfd);
+    }
+  return result;
+}
+
+/* Look up COMPRESS_PROGRAM in $PATH, and return the resolved program name.
+   Upon error, return NULL with errno set.  */
+
+static char const *
+get_resolved_compress_program (void)
+{
+  /* Use a cache, to perform the search only once.  */
+  static char const *resolved_compress_program_cache /* = NULL */;
+
+  if (resolved_compress_program_cache == NULL)
+    {
+      resolved_compress_program_cache =
+        find_in_given_path (compress_program, getenv ("PATH"), NULL, false);
+      /* If resolved_compress_program_cache == NULL, errno is set here.  */
+    }
+
+  return resolved_compress_program_cache;
+}
+
+/* Execute COMPRESS_PROGRAM in a child process.  The child processes pid is
+   stored in PD.  The TRIES parameter specifies how many times to try to create
+   a child process before giving up.  Return 0 on success, or an error number
+   otherwise.  */
+
+static int
+pipe_child (pid_t *pid, int pipefds[2], int tempfd, bool decompress,
+            size_t tries)
+{
+  char const *resolved_compress_program;
   struct tempnode *saved_temphead;
-  int saved_errno;
   double wait_retry = 0.25;
-  pid_t pid;
   struct cs_status cs;
+  int result;
+  posix_spawnattr_t attr;
+  posix_spawn_file_actions_t actions;
+
+  /* Lookup the program before we spawn, so that we consistently
+     handle access issues to COMPRESS_PROGRAM, because on some
+     implementations/emulations of posix_spawn we get only a
+     generic (fatal) error from the child in that case.  */
+  resolved_compress_program = get_resolved_compress_program ();
+  if (resolved_compress_program == NULL)
+    return errno;
+
+  if ((result = posix_spawnattr_init (&attr)))
+    return result;
+  if ((result = posix_spawnattr_setflags (&attr, POSIX_SPAWN_USEVFORK))
+      || (result = posix_spawn_file_actions_init (&actions)))
+    {
+      posix_spawnattr_destroy (&attr);
+      return result;
+    }
 
   if (pipe2 (pipefds, O_CLOEXEC) < 0)
-    return -1;
+    {
+      int saved_errno = errno;
+      posix_spawnattr_destroy (&attr);
+      posix_spawn_file_actions_destroy (&actions);
+      return saved_errno;
+    }
+
+  if ((result = posix_spawn_file_actions_addclose (&actions, STDIN_FILENO))
+      || (result = posix_spawn_file_actions_addclose (&actions, STDOUT_FILENO))
+      || (decompress
+          ? ((result = posix_spawn_file_actions_addclose (&actions,
+                                                          pipefds[0]))
+             || (result = posix_spawn_file_actions_move_fd (&actions, tempfd,
+                                                            STDIN_FILENO))
+             || (result = posix_spawn_file_actions_move_fd (&actions,
+                                                            pipefds[1],
+                                                            STDOUT_FILENO)))
+          : ((result = posix_spawn_file_actions_addclose (&actions,
+                                                          pipefds[1]))
+             || (result = posix_spawn_file_actions_move_fd (&actions, tempfd,
+                                                            STDOUT_FILENO))
+             || (result = posix_spawn_file_actions_move_fd (&actions,
+                                                            pipefds[0],
+                                                            STDIN_FILENO)))))
+    {
+      close (pipefds[0]);
+      close (pipefds[1]);
+      posix_spawnattr_destroy (&attr);
+      posix_spawn_file_actions_destroy (&actions);
+      return result;
+    }
+
+  char const *const argv[] =
+    {
+      resolved_compress_program,
+      decompress ? "-d" : NULL,
+      NULL
+    };
 
   /* At least NMERGE + 1 subprocesses are needed.  More could be created, but
      uncontrolled subprocess generation can hurt performance significantly.
@@ -1068,52 +1196,45 @@ pipe_fork (int pipefds[2], size_t tries)
          if it receives a signal before exec-ing.  */
       cs_enter (&cs);
       saved_temphead = temphead;
-      temphead = nullptr;
+      temphead = NULL;
 
-      pid = fork ();
-      saved_errno = errno;
-      if (pid)
-        temphead = saved_temphead;
+      result = posix_spawnp (pid, resolved_compress_program, &actions, &attr,
+                             (char * const *) argv, environ);
+
+      temphead = saved_temphead;
 
       cs_leave (&cs);
-      errno = saved_errno;
 
-      if (0 <= pid || errno != EAGAIN)
+      if (result != EAGAIN)
         break;
       else
         {
+          /* [v]fork/clone are indicating resource constraints,
+             so back-off for a while and retry.  */
           xnanosleep (wait_retry);
           wait_retry *= 2;
           reap_exited ();
         }
     }
 
-  if (pid < 0)
+  posix_spawnattr_destroy (&attr);
+  posix_spawn_file_actions_destroy (&actions);
+
+  if (result)
     {
-      saved_errno = errno;
       close (pipefds[0]);
       close (pipefds[1]);
-      errno = saved_errno;
-    }
-  else if (pid == 0)
-    {
-      close (STDIN_FILENO);
-      close (STDOUT_FILENO);
     }
   else
     ++nprocs;
 
-  return pid;
-
-#else  /* ! HAVE_WORKING_FORK */
-  return -1;
-#endif
+  return result;
 }
 
 /* Create a temporary file and, if asked for, start a compressor
    to that file.  Set *PFP to the file handle and return
    the address of the new temp node.  If the creation
-   fails, return nullptr if the failure is due to file descriptor
+   fails, return NULL if the failure is due to file descriptor
    exhaustion and SURVIVE_FD_EXHAUSTION; otherwise, die.  */
 
 static struct tempnode *
@@ -1122,16 +1243,25 @@ maybe_create_temp (FILE **pfp, bool survive_fd_exhaustion)
   int tempfd;
   struct tempnode *node = create_temp_file (&tempfd, survive_fd_exhaustion);
   if (! node)
-    return nullptr;
+    return NULL;
 
   node->state = UNCOMPRESSED;
 
   if (compress_program)
     {
       int pipefds[2];
+      static int last_result = 0;
 
-      node->pid = pipe_fork (pipefds, MAX_FORK_TRIES_COMPRESS);
-      if (0 < node->pid)
+      int result = pipe_child (&node->pid, pipefds, tempfd, false,
+                               MAX_TRIES_COMPRESS);
+
+      if (result)
+        {
+          if (result != last_result)
+            error (0, result, _("could not run compress program %s"),
+                   quoteaf (compress_program));
+        }
+      else
         {
           close (tempfd);
           close (pipefds[0]);
@@ -1139,18 +1269,8 @@ maybe_create_temp (FILE **pfp, bool survive_fd_exhaustion)
 
           register_proc (node);
         }
-      else if (node->pid == 0)
-        {
-          /* Being the child of a multithreaded program before exec,
-             we're restricted to calling async-signal-safe routines here.  */
-          close (pipefds[1]);
-          move_fd (tempfd, STDOUT_FILENO);
-          move_fd (pipefds[0], STDIN_FILENO);
 
-          execlp (compress_program, compress_program, (char *) nullptr);
-
-          async_safe_die (errno, "couldn't execute compress program");
-        }
+      last_result = result;
     }
 
   *pfp = fdopen (tempfd, "w");
@@ -1171,7 +1291,7 @@ create_temp (FILE **pfp)
 }
 
 /* Open a compressed temp file and start a decompression process through
-   which to filter the input.  Return nullptr (setting errno to
+   which to filter the input.  Return NULL (setting errno to
    EMFILE) if we ran out of file descriptors, and die on any other
    kind of failure.  */
 
@@ -1179,39 +1299,29 @@ static FILE *
 open_temp (struct tempnode *temp)
 {
   int tempfd, pipefds[2];
-  FILE *fp = nullptr;
+  FILE *fp = NULL;
 
   if (temp->state == UNREAPED)
     wait_proc (temp->pid);
 
   tempfd = open (temp->name, O_RDONLY);
   if (tempfd < 0)
-    return nullptr;
+    return NULL;
 
-  pid_t child = pipe_fork (pipefds, MAX_FORK_TRIES_DECOMPRESS);
+  pid_t child;
+  int result = pipe_child (&child, pipefds, tempfd, true,
+                           MAX_TRIES_DECOMPRESS);
 
-  switch (child)
+  if (result)
     {
-    case -1:
-      if (errno != EMFILE)
-        error (SORT_FAILURE, errno, _("couldn't create process for %s -d"),
+      if (result != EMFILE)
+        error (SORT_FAILURE, result, _("could not run compress program %s -d"),
                quoteaf (compress_program));
       close (tempfd);
       errno = EMFILE;
-      break;
-
-    case 0:
-      /* Being the child of a multithreaded program before exec,
-         we're restricted to calling async-signal-safe routines here.  */
-      close (pipefds[0]);
-      move_fd (tempfd, STDIN_FILENO);
-      move_fd (pipefds[1], STDOUT_FILENO);
-
-      execlp (compress_program, compress_program, "-d", (char *) nullptr);
-
-      async_safe_die (errno, "couldn't execute compress program (with -d)");
-
-    default:
+    }
+  else
+    {
       temp->pid = child;
       register_proc (temp);
       close (tempfd);
@@ -1224,7 +1334,6 @@ open_temp (struct tempnode *temp)
           close (pipefds[0]);
           errno = saved_errno;
         }
-      break;
     }
 
   return fp;
@@ -1290,9 +1399,7 @@ struct_month_cmp (void const *m1, void const *m2)
 static void
 inittables (void)
 {
-  size_t i;
-
-  for (i = 0; i < UCHAR_LIM; ++i)
+  for (size_t i = 0; i < UCHAR_LIM; ++i)
     {
       blanks[i] = i == '\n' || isblank (i);
       nondictionary[i] = ! blanks[i] && ! isalnum (i);
@@ -1304,7 +1411,7 @@ inittables (void)
   /* If we're not in the "C" locale, read different names for months.  */
   if (hard_LC_TIME)
     {
-      for (i = 0; i < MONTHS_PER_YEAR; i++)
+      for (size_t i = 0; i < MONTHS_PER_YEAR; i++)
         {
           char const *s;
           size_t s_len;
@@ -1334,7 +1441,7 @@ specify_nmerge (int oi, char c, char const *s)
 {
   uintmax_t n;
   struct rlimit rlimit;
-  enum strtol_error e = xstrtoumax (s, nullptr, 10, &n, "");
+  enum strtol_error e = xstrtoumax (s, NULL, 10, &n, "");
 
   /* Try to find out how many file descriptors we'll be able
      to open.  We need at least nmerge + 3 (STDIN_FILENO,
@@ -1441,7 +1548,7 @@ static size_t
 specify_nthreads (int oi, char c, char const *s)
 {
   uintmax_t nthreads;
-  enum strtol_error e = xstrtoumax (s, nullptr, 10, &nthreads, "");
+  enum strtol_error e = xstrtoumax (s, NULL, 10, &nthreads, "");
   if (e == LONGINT_OVERFLOW)
     return SIZE_MAX;
   if (e != LONGINT_OK)
@@ -2202,7 +2309,7 @@ compare_random (char *restrict texta, size_t lena,
   char stackbuf[4000];
   char *buf = stackbuf;
   size_t bufsize = sizeof stackbuf;
-  void *allocated = nullptr;
+  void *allocated = NULL;
   uint32_t dig[2][MD5_DIGEST_SIZE / sizeof (uint32_t)];
   struct md5_ctx s[2];
   s[0] = s[1] = random_md5_state;
@@ -2247,7 +2354,7 @@ compare_random (char *restrict texta, size_t lena,
           bool a_fits = sizea <= bufsize;
           size_t sizeb =
             (textb < limb
-             ? (xstrxfrm ((a_fits ? buf + sizea : nullptr), textb,
+             ? (xstrxfrm ((a_fits ? buf + sizea : NULL), textb,
                           (a_fits ? bufsize - sizea : 0))
                 + 1)
              : 0);
@@ -2486,7 +2593,6 @@ key_to_opts (struct keyfield const *key, char *opts)
 static void
 key_warnings (struct keyfield const *gkey, bool gkey_only)
 {
-  struct keyfield const *key;
   struct keyfield ugkey = *gkey;
   unsigned long keynum = 1;
   bool basic_numeric_field = false;
@@ -2494,7 +2600,7 @@ key_warnings (struct keyfield const *gkey, bool gkey_only)
   bool basic_numeric_field_span = false;
   bool general_numeric_field_span = false;
 
-  for (key = keylist; key; key = key->next, keynum++)
+  for (struct keyfield *key = keylist; key; key = key->next, keynum++)
     {
       if (key_numeric (key))
         {
@@ -2570,9 +2676,9 @@ key_warnings (struct keyfield const *gkey, bool gkey_only)
 
       /* Flag global options not copied or specified in any key.  */
       if (ugkey.ignore && (ugkey.ignore == key->ignore))
-        ugkey.ignore = nullptr;
+        ugkey.ignore = NULL;
       if (ugkey.translate && (ugkey.translate == key->translate))
-        ugkey.translate = nullptr;
+        ugkey.translate = NULL;
       ugkey.skipsblanks &= !key->skipsblanks;
       ugkey.skipeblanks &= !key->skipeblanks;
       ugkey.month &= !key->month;
@@ -2717,7 +2823,7 @@ keycompare (struct line const *a, struct line const *b)
           char enda = ta[tlena];
           char endb = tb[tlenb];
 
-          void *allocated = nullptr;
+          void *allocated = NULL;
           char stackbuf[4000];
 
           if (ignore || translate)
@@ -2761,7 +2867,7 @@ keycompare (struct line const *a, struct line const *b)
           else if (key->human_numeric)
             diff = human_numcompare (ta, tb);
           else if (key->month)
-            diff = getmonth (ta, nullptr) - getmonth (tb, nullptr);
+            diff = getmonth (ta, NULL) - getmonth (tb, NULL);
           else if (key->random)
             diff = compare_random (ta, tlena, tb, tlenb);
           else if (key->version)
@@ -2974,7 +3080,7 @@ check (char const *file_name, char checkonly)
 
   initbuf (&buf, sizeof (struct line),
            MAX (merge_buffer_size, sort_size));
-  temp.text = nullptr;
+  temp.text = NULL;
 
   while (fillbuf (&buf, fp, file_name))
     {
@@ -3080,7 +3186,7 @@ mergefps (struct sortfile *files, size_t ntemps, size_t nfiles,
   struct buffer *buffer = xnmalloc (nfiles, sizeof *buffer);
                                 /* Input buffers for each file. */
   struct line saved;		/* Saved line storage for unique check. */
-  struct line const *savedline = nullptr;
+  struct line const *savedline = NULL;
                                 /* &saved if there is a saved line. */
   size_t savealloc = 0;		/* Size allocated for the saved line. */
   struct line const **cur = xnmalloc (nfiles, sizeof *cur);
@@ -3091,14 +3197,12 @@ mergefps (struct sortfile *files, size_t ntemps, size_t nfiles,
                                 /* Table representing a permutation of fps,
                                    such that cur[ord[0]] is the smallest line
                                    and will be next output. */
-  size_t i;
-  size_t j;
   size_t t;
   struct keyfield const *key = keylist;
-  saved.text = nullptr;
+  saved.text = NULL;
 
   /* Read initial lines from each input file. */
-  for (i = 0; i < nfiles; )
+  for (size_t i = 0; i < nfiles; )
     {
       initbuf (&buffer[i], sizeof (struct line),
                MAX (merge_buffer_size, sort_size / nfiles));
@@ -3120,7 +3224,7 @@ mergefps (struct sortfile *files, size_t ntemps, size_t nfiles,
             }
           free (buffer[i].buf);
           --nfiles;
-          for (j = i; j < nfiles; ++j)
+          for (size_t j = i; j < nfiles; ++j)
             {
               files[j] = files[j + 1];
               fps[j] = fps[j + 1];
@@ -3131,9 +3235,9 @@ mergefps (struct sortfile *files, size_t ntemps, size_t nfiles,
   /* Set up the ord table according to comparisons among input lines.
      Since this only reorders two items if one is strictly greater than
      the other, it is stable. */
-  for (i = 0; i < nfiles; ++i)
+  for (size_t i = 0; i < nfiles; ++i)
     ord[i] = i;
-  for (i = 1; i < nfiles; ++i)
+  for (size_t i = 1; i < nfiles; ++i)
     if (0 < compare (cur[ord[i - 1]], cur[ord[i]]))
       t = ord[i - 1], ord[i - 1] = ord[i], ord[i] = t, i = 0;
 
@@ -3148,7 +3252,7 @@ mergefps (struct sortfile *files, size_t ntemps, size_t nfiles,
         {
           if (savedline && compare (savedline, smallest))
             {
-              savedline = nullptr;
+              savedline = NULL;
               write_line (&saved, ofp, output_file);
             }
           if (!savedline)
@@ -3195,7 +3299,7 @@ mergefps (struct sortfile *files, size_t ntemps, size_t nfiles,
           else
             {
               /* We reached EOF on fps[ord[0]].  */
-              for (i = 1; i < nfiles; ++i)
+              for (size_t i = 1; i < nfiles; ++i)
                 if (ord[i] > ord[0])
                   --ord[i];
               --nfiles;
@@ -3206,7 +3310,7 @@ mergefps (struct sortfile *files, size_t ntemps, size_t nfiles,
                   zaptemp (files[ord[0]].name);
                 }
               free (buffer[ord[0]].buf);
-              for (i = ord[0]; i < nfiles; ++i)
+              for (size_t i = ord[0]; i < nfiles; ++i)
                 {
                   fps[i] = fps[i + 1];
                   files[i] = files[i + 1];
@@ -3214,7 +3318,7 @@ mergefps (struct sortfile *files, size_t ntemps, size_t nfiles,
                   cur[i] = cur[i + 1];
                   base[i] = base[i + 1];
                 }
-              for (i = 0; i < nfiles; ++i)
+              for (size_t i = 0; i < nfiles; ++i)
                 ord[i] = ord[i + 1];
               continue;
             }
@@ -3242,7 +3346,7 @@ mergefps (struct sortfile *files, size_t ntemps, size_t nfiles,
           }
 
         count_of_smaller_lines = lo - 1;
-        for (j = 0; j < count_of_smaller_lines; j++)
+        for (size_t j = 0; j < count_of_smaller_lines; j++)
           ord[j] = ord[j + 1];
         ord[count_of_smaller_lines] = ord0;
       }
@@ -3401,13 +3505,13 @@ merge_tree_init (size_t nthreads, size_t nlines, struct line *dest)
   struct merge_node *merge_tree = xmalloc (2 * sizeof *merge_tree * nthreads);
 
   struct merge_node *root = merge_tree;
-  root->lo = root->hi = root->end_lo = root->end_hi = nullptr;
-  root->dest = nullptr;
+  root->lo = root->hi = root->end_lo = root->end_hi = NULL;
+  root->dest = NULL;
   root->nlo = root->nhi = nlines;
-  root->parent = nullptr;
+  root->parent = NULL;
   root->level = MERGE_END;
   root->queued = false;
-  pthread_mutex_init (&root->lock, nullptr);
+  pthread_mutex_init (&root->lock, NULL);
 
   init_node (root, root + 1, dest, nthreads, nlines, false);
   return merge_tree;
@@ -3458,7 +3562,7 @@ init_node (struct merge_node *restrict parent,
   node->parent = parent;
   node->level = parent->level + 1;
   node->queued = false;
-  pthread_mutex_init (&node->lock, nullptr);
+  pthread_mutex_init (&node->lock, NULL);
 
   if (nthreads > 1)
     {
@@ -3473,8 +3577,8 @@ init_node (struct merge_node *restrict parent,
     }
   else
     {
-      node->lo_child = nullptr;
-      node->hi_child = nullptr;
+      node->lo_child = NULL;
+      node->hi_child = NULL;
     }
   return node_pool;
 }
@@ -3528,8 +3632,8 @@ queue_init (struct merge_node_queue *queue, size_t nthreads)
      time, the heap should accommodate all of them.  Counting a null
      dummy head for the heap, reserve 2 * NTHREADS nodes.  */
   queue->priority_queue = heap_alloc (compare_nodes, 2 * nthreads);
-  pthread_mutex_init (&queue->mutex, nullptr);
-  pthread_cond_init (&queue->cond, nullptr);
+  pthread_mutex_init (&queue->mutex, NULL);
+  pthread_cond_init (&queue->cond, NULL);
 }
 
 /* Insert NODE into QUEUE.  The caller either holds a lock on NODE, or
@@ -3758,7 +3862,7 @@ sortlines_thread (void *data)
   sortlines (args->lines, args->nthreads, args->total_lines,
              args->node, args->queue, args->tfp,
              args->output_temp);
-  return nullptr;
+  return NULL;
 }
 
 /* Sort lines, possibly in parallel.  The arguments are as in struct
@@ -3800,11 +3904,11 @@ sortlines (struct line *restrict lines, size_t nthreads,
                              node->lo_child, queue, tfp, temp_output};
 
   if (nthreads > 1 && SUBTHREAD_LINES_HEURISTIC <= nlines
-      && pthread_create (&thread, nullptr, sortlines_thread, &args) == 0)
+      && pthread_create (&thread, NULL, sortlines_thread, &args) == 0)
     {
       sortlines (lines - node->nlo, hi_threads, total_lines,
                  node->hi_child, queue, tfp, temp_output);
-      pthread_join (thread, nullptr);
+      pthread_join (thread, NULL);
     }
   else
     {
@@ -3850,7 +3954,7 @@ static void
 avoid_trashing_input (struct sortfile *files, size_t ntemps,
                       size_t nfiles, char const *outfile)
 {
-  struct tempnode *tempcopy = nullptr;
+  struct tempnode *tempcopy = NULL;
 
   for (size_t i = ntemps; i < nfiles; i++)
     {
@@ -4103,7 +4207,7 @@ sort (char *const *files, size_t nfiles, char const *output_file,
               break;
             }
 
-          saved_line.text = nullptr;
+          saved_line.text = NULL;
           line = buffer_linelim (&buf);
           if (buf.eof && !nfiles && !ntemps && !buf.left)
             {
@@ -4119,16 +4223,26 @@ sort (char *const *files, size_t nfiles, char const *output_file,
             }
           if (1 < buf.nlines)
             {
-              struct merge_node_queue queue;
-              queue_init (&queue, nthreads);
-              struct merge_node *merge_tree =
-                merge_tree_init (nthreads, buf.nlines, line);
+              if (nthreads > 1)
+                {
+                  struct merge_node_queue queue;
+                  queue_init (&queue, nthreads);
+                  struct merge_node *merge_tree =
+                    merge_tree_init (nthreads, buf.nlines, line);
 
-              sortlines (line, nthreads, buf.nlines, merge_tree + 1,
-                         &queue, tfp, temp_output);
+                  sortlines (line, nthreads, buf.nlines, merge_tree + 1,
+                             &queue, tfp, temp_output);
 
-              merge_tree_destroy (nthreads, merge_tree);
-              queue_destroy (&queue);
+                  merge_tree_destroy (nthreads, merge_tree);
+                  queue_destroy (&queue);
+                }
+              else
+                {
+                  sequential_sort (line, buf.nlines,
+                                   line - buf.nlines, false);
+                  for (size_t i = 0; i < buf.nlines; i++)
+                    write_unique (line - i - 1, tfp, temp_output);
+                }
             }
           else
             write_unique (line - 1, tfp, temp_output);
@@ -4172,7 +4286,7 @@ insertkey (struct keyfield *key_arg)
   for (p = &keylist; *p; p = &(*p)->next)
     continue;
   *p = key;
-  key->next = nullptr;
+  key->next = NULL;
 }
 
 /* Report a bad field specification SPEC, with extra info MSGID.  */
@@ -4197,9 +4311,7 @@ incompatible_options (char const *opts)
 static void
 check_ordering_compatibility (void)
 {
-  struct keyfield *key;
-
-  for (key = keylist; key; key = key->next)
+  for (struct keyfield *key = keylist; key; key = key->next)
     if (1 < (key->numeric + key->general_numeric + key->human_numeric
              + key->month + (key->version | key->random | !!key->ignore)))
       {
@@ -4215,7 +4327,7 @@ check_ordering_compatibility (void)
 /* Parse the leading integer in STRING and store the resulting value
    (which must fit into size_t) into *VAL.  Return the address of the
    suffix after the integer.  If the value is too large, silently
-   substitute SIZE_MAX.  If MSGID is null, return nullptr after
+   substitute SIZE_MAX.  If MSGID is null, return NULL after
    failure; otherwise, report MSGID and exit on failure.  */
 
 static char const *
@@ -4241,24 +4353,10 @@ parse_field_count (char const *string, size_t *val, char const *msgid)
       if (msgid)
         error (SORT_FAILURE, 0, _("%s: invalid count at start of %s"),
                _(msgid), quote (string));
-      return nullptr;
+      return NULL;
     }
 
   return suffix;
-}
-
-/* Handle interrupts and hangups. */
-
-static void
-sighandler (int sig)
-{
-  if (! SA_NOCLDSTOP)
-    signal (sig, SIG_IGN);
-
-  cleanup ();
-
-  signal (sig, SIG_DFL);
-  raise (sig);
 }
 
 /* Set the ordering options for KEY specified in S.
@@ -4341,17 +4439,17 @@ main (int argc, char **argv)
   int c = 0;
   char checkonly = 0;
   bool mergeonly = false;
-  char *random_source = nullptr;
+  char *random_source = NULL;
   bool need_random = false;
   size_t nthreads = 0;
   size_t nfiles = 0;
-  bool posixly_correct = (getenv ("POSIXLY_CORRECT") != nullptr);
+  bool posixly_correct = (getenv ("POSIXLY_CORRECT") != NULL);
   int posix_ver = posix2_version ();
   bool traditional_usage = ! (200112 <= posix_ver && posix_ver < 200809);
   char **files;
-  char *files_from = nullptr;
+  char *files_from = NULL;
   struct Tokens tok;
-  char const *outfile = nullptr;
+  char const *outfile = NULL;
   bool locale_ok;
 
   initialize_main (&argc, &argv);
@@ -4386,59 +4484,34 @@ main (int argc, char **argv)
       thousands_sep = NON_CHAR;
   }
 
-  have_read_stdin = false;
   inittables ();
 
   {
-    size_t i;
-    static int const sig[] =
-      {
-        /* The usual suspects.  */
-        SIGALRM, SIGHUP, SIGINT, SIGPIPE, SIGQUIT, SIGTERM,
-#ifdef SIGPOLL
-        SIGPOLL,
-#endif
-#ifdef SIGPROF
-        SIGPROF,
-#endif
-#ifdef SIGVTALRM
-        SIGVTALRM,
-#endif
-#ifdef SIGXCPU
-        SIGXCPU,
-#endif
-#ifdef SIGXFSZ
-        SIGXFSZ,
-#endif
-      };
-    enum { nsigs = countof (sig) };
+    enum { nsigs = countof (term_sig) };
 
-#if SA_NOCLDSTOP
     struct sigaction act;
 
     sigemptyset (&caught_signals);
-    for (i = 0; i < nsigs; i++)
+    for (size_t i = 0; i < nsigs; i++)
       {
-        sigaction (sig[i], nullptr, &act);
+        if (term_sig[i] == SIGPIPE)
+          continue;  /* Handled below.  */
+        sigaction (term_sig[i], NULL, &act);
         if (act.sa_handler != SIG_IGN)
-          sigaddset (&caught_signals, sig[i]);
+          sigaddset (&caught_signals, term_sig[i]);
       }
 
     act.sa_handler = sighandler;
     act.sa_mask = caught_signals;
     act.sa_flags = 0;
 
-    for (i = 0; i < nsigs; i++)
-      if (sigismember (&caught_signals, sig[i]))
-        sigaction (sig[i], &act, nullptr);
-#else
-    for (i = 0; i < nsigs; i++)
-      if (signal (sig[i], SIG_IGN) != SIG_IGN)
-        {
-          signal (sig[i], sighandler);
-          siginterrupt (sig[i], 1);
-        }
-#endif
+    for (size_t i = 0; i < nsigs; i++)
+      {
+        if (term_sig[i] == SIGPIPE)
+          continue;  /* Handled below.  */
+        if (sigismember (&caught_signals, term_sig[i]))
+          sigaction (term_sig[i], &act, NULL);
+      }
   }
   signal (SIGCHLD, SIG_DFL); /* Don't inherit CHLD handling from parent.  */
 
@@ -4476,7 +4549,7 @@ main (int argc, char **argv)
       else switch (c)
         {
         case 1:
-          key = nullptr;
+          key = NULL;
           if (optarg[0] == '+')
             {
               bool minus_pos_usage = (optind != argc && argv[optind][0] == '-'
@@ -4487,13 +4560,13 @@ main (int argc, char **argv)
                   /* Treat +POS1 [-POS2] as a key if possible; but silently
                      treat an operand as a file if it is not a valid +POS1.  */
                   key = key_init (&key_buf);
-                  s = parse_field_count (optarg + 1, &key->sword, nullptr);
+                  s = parse_field_count (optarg + 1, &key->sword, NULL);
                   if (s && *s == '.')
-                    s = parse_field_count (s + 1, &key->schar, nullptr);
+                    s = parse_field_count (s + 1, &key->schar, NULL);
                   if (! (key->sword || key->schar))
                     key->sword = SIZE_MAX;
                   if (! s || *set_ordering (s, key, bl_start))
-                    key = nullptr;
+                    key = NULL;
                   else
                     {
                       if (minus_pos_usage)
@@ -4724,6 +4797,11 @@ main (int argc, char **argv)
         }
     }
 
+  /* Ignore SIGPIPE so write failures are reported via EPIPE errno.
+     For stdout, sort_die() will reraise SIGPIPE if it was originally SIG_DFL.
+     For compression pipes, sort_die() will exit with SORT_FAILURE.  */
+  default_SIGPIPE = (signal (SIGPIPE, SIG_IGN) == SIG_DFL);
+
   if (files_from)
     {
       /* When using --files0-from=F, you may not specify any files
@@ -4824,7 +4902,7 @@ main (int argc, char **argv)
           error (0, 0, "%s", _("failed to set locale"));
       if (hard_LC_COLLATE)
         error (0, 0, _("text ordering performed using %s sorting rules"),
-               quote (setlocale (LC_COLLATE, nullptr)));
+               quote (setlocale (LC_COLLATE, NULL)));
       else
         error (0, 0, "%s",
                _("text ordering performed using simple byte comparison"));

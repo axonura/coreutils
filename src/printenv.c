@@ -1,5 +1,5 @@
 /* printenv -- print all or part of environment
-   Copyright (C) 1989-2025 Free Software Foundation, Inc.
+   Copyright (C) 1989-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -46,10 +46,10 @@ enum { PRINTENV_FAILURE = 2 };
 
 static struct option const longopts[] =
 {
-  {"null", no_argument, nullptr, '0'},
+  {"null", no_argument, NULL, '0'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -66,11 +66,12 @@ If no VARIABLE is specified, print name and value pairs for them all.\n\
 \n\
 "),
               program_name);
-      fputs (_("\
-  -0, --null     end each output line with NUL, not newline\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -0, --null\n\
+         end each output line with NUL, not newline\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       printf (USAGE_BUILTIN_WARNING, PROGRAM_NAME);
       emit_ancillary_info (PROGRAM_NAME);
     }
@@ -80,11 +81,6 @@ If no VARIABLE is specified, print name and value pairs for them all.\n\
 int
 main (int argc, char **argv)
 {
-  char **env;
-  char *ep, *ap;
-  int i;
-  bool ok;
-  int optc;
   bool opt_nul_terminate_output = false;
 
   initialize_main (&argc, &argv);
@@ -96,7 +92,8 @@ main (int argc, char **argv)
   initialize_exit_failure (PRINTENV_FAILURE);
   atexit (close_stdout);
 
-  while ((optc = getopt_long (argc, argv, "+iu:0", longopts, nullptr)) != -1)
+  int optc;
+  while ((optc = getopt_long (argc, argv, "+iu:0", longopts, NULL)) != -1)
     {
       switch (optc)
         {
@@ -110,9 +107,10 @@ main (int argc, char **argv)
         }
     }
 
+  bool ok;
   if (optind >= argc)
     {
-      for (env = environ; *env != nullptr; ++env)
+      for (char **env = environ; *env != NULL; ++env)
         printf ("%s%c", *env, opt_nul_terminate_output ? '\0' : '\n');
       ok = true;
     }
@@ -120,7 +118,7 @@ main (int argc, char **argv)
     {
       int matches = 0;
 
-      for (i = optind; i < argc; ++i)
+      for (int i = optind; i < argc; ++i)
         {
           bool matched = false;
 
@@ -128,10 +126,10 @@ main (int argc, char **argv)
           if (strchr (argv[i], '='))
             continue;
 
-          for (env = environ; *env; ++env)
+          for (char **env = environ; *env; ++env)
             {
-              ep = *env;
-              ap = argv[i];
+              char const *ep = *env;
+              char const *ap = argv[i];
               while (*ep != '\0' && *ap != '\0' && *ep++ == *ap++)
                 {
                   if (*ep == '=' && *ap == '\0')

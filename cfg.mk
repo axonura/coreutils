@@ -1,5 +1,5 @@
 # Customize maint.mk                           -*- makefile -*-
-# Copyright (C) 2003-2025 Free Software Foundation, Inc.
+# Copyright (C) 2003-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,6 +16,9 @@
 
 # Used in maint.mk's web-manual rule
 manual_title = Core GNU utilities
+
+# Don't create node redirection files for each anchor
+gendocs_options_ = --common --no-node-files
 
 # Use the direct link.  This is guaranteed to work immediately, while
 # it can take a while for the faster mirror links to become usable.
@@ -48,7 +51,7 @@ export VERBOSE = yes
 # 4914152 9e
 export XZ_OPT = -8e
 
-old_NEWS_hash = 6651d3c6c61d6b5d0f95b969e5c0c2af
+old_NEWS_hash = d6fdb7c0ed54211fd2567f8cb89facc3
 
 # Add an exemption for sc_makefile_at_at_check.
 _makefile_at_at_check_exceptions = \
@@ -372,6 +375,11 @@ sc_texi_long_option_escaped: doc/coreutils.info
 	@grep ' –[^ ]' '$<'						\
 	  && { echo 1>&2 '$@: found unquoted --long-option'; exit 1; } || :
 
+# pdf (and dvi) generation requires explicit empty args (trailing comma)
+sc_texi_ensure_empty_option_args:
+	@grep '^@optItem[^,]*,[^,]*$$' doc/*.texi && { echo 1>&2 \
+	  '$@: Use explicit empty argument to @optItem[x]'; exit 1; } || :
+
 # Ensure all man/*.[1x] files are present.
 sc_man_file_correlation: check-x-vs-1 check-programs-vs-x
 
@@ -516,12 +524,6 @@ sc_prohibit_exit_write_error:
 	halt='Use write_error() instead' \
 	  $(_sc_search_regexp)
 
-sc_prohibit_NULL:
-	@prohibit='$(begword)NULL$(endword)'				\
-	in_vc_files='\.[ch]$$'						\
-	halt='use nullptr instead'					\
-	  $(_sc_search_regexp)
-
 sc_prohibit_bare_set:
 	@prohibit='^ *set [`$$]'					\
 	in_vc_files='\.sh$$'						\
@@ -601,6 +603,19 @@ sc_require_stdlib_safer:
 	else :;								\
 	fi
 
+# Ensure that "unistd--.h" is used where appropriate.
+sc_require_unistd_safer:
+	@if $(VC_LIST_EXCEPT) | grep -l '\.[ch]$$' > /dev/null; then	\
+	  files=$$(grep -El '$(begword)(pipe2?|dup[23]?) ?\('		\
+		   $$($(VC_LIST_EXCEPT)					\
+	      | grep '\.[ch]$$'));					\
+	  test -n "$$files" && grep -LE 'include "unistd--.h"' $$files	\
+	      | grep . &&						\
+	  { echo '$(ME): the above files should use "unistd--.h"'	\
+		1>&2; exit 1; } || :;					\
+	else :;								\
+	fi
+
 sc_prohibit_perl_hash_quotes:
 	@prohibit="\{'[A-Z_]+' *[=}]"					\
 	halt="in Perl code, write \$$hash{KEY}, not \$$hash{'K''EY'}"	\
@@ -631,6 +646,12 @@ sc_env_test_dependencies:
 	      grep "print_ver_.* $$prog" $$test >/dev/null \
 		|| echo $$test should call: print_ver_ $$prog; \
 	    done | grep . && exit 1 || :
+
+# Enforce using our printf if using \u or \x
+sc_env_printf:
+	@cd $(top_srcdir) && GIT_PAGER= git grep 'printf.*[^\\]\\[ux]' tests \
+	  | grep -v -- '--printf' | grep -v 'env printf' \
+	  && { echo 'use "env printf" with \x or \u'; exit 1; } || :
 
 # Use framework_failure_, not the old name without the trailing underscore.
 sc_prohibit_framework_failure:
@@ -884,6 +905,10 @@ sc_prohibit-long-form-bug-urls:
 announcement_Cc_ = $(translation_project_), \
   coreutils@gnu.org, coreutils-announce@gnu.org
 
+# Write cksum supported checksums into the announcement.
+# I.e., base64 to reduce space, and possibly tagged to ease usage.
+announce_gen_args = --cksum-checksums
+
 -include $(srcdir)/dist-check.mk
 
 update-copyright-env = \
@@ -893,9 +918,9 @@ update-copyright-env = \
 
 # List syntax-check exemptions.
 exclude_file_name_regexp--sc_space_tab = \
-  ^(tests/pr/|tests/misc/nl\.sh$$|gl/.*\.diff$$|man/help2man$$)
+  ^(tests/pr/|tests/nl/nl\.sh$$|gl/.*\.diff$$|man/help2man$$)
 exclude_file_name_regexp--sc_bindtextdomain = \
-  ^(gl/.*|lib/euidaccess-stat|src/make-prime-list|src/cksum)\.c$$
+  ^(gl/.*|lib/euidaccess-stat|src/make-prime-list|src/cksum_crc)\.c$$
 exclude_file_name_regexp--sc_trailing_blank = \
   ^(tests/pr/|gl/.*\.diff$$|man/help2man)
 _x_system_h := (system|copy|chown-core|find-mount-point)\.h
@@ -931,7 +956,7 @@ _ll = ^src/longlong\.h$$
 exclude_file_name_regexp--sc_useless_cpp_parens = $(_ll)
 exclude_file_name_regexp--sc_space_before_open_paren = $(_ll)
 
-tbi_1 = ^tests/pr/|(\.mk|^man/help2man)$$
+tbi_1 = ^tests/pr/|(\.mk|^gl/.*\.diff|^man/help2man)$$
 tbi_2 = ^scripts/git-hooks/(pre-commit|pre-applypatch|applypatch-msg)$$
 tbi_3 = (GNU)?[Mm]akefile(\.am)?$$|$(_ll)
 exclude_file_name_regexp--sc_prohibit_tab_based_indentation = \

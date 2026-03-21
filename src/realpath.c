@@ -1,5 +1,5 @@
 /* realpath - print the resolved path
-   Copyright (C) 2011-2025 Free Software Foundation, Inc.
+   Copyright (C) 2011-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -44,20 +44,20 @@ static char const *can_relative_base;
 
 static struct option const longopts[] =
 {
-  {"canonicalize", no_argument, nullptr, 'E'},
-  {"canonicalize-existing", no_argument, nullptr, 'e'},
-  {"canonicalize-missing", no_argument, nullptr, 'm'},
-  {"relative-to", required_argument, nullptr, RELATIVE_TO_OPTION},
-  {"relative-base", required_argument, nullptr, RELATIVE_BASE_OPTION},
-  {"quiet", no_argument, nullptr, 'q'},
-  {"strip", no_argument, nullptr, 's'},
-  {"no-symlinks", no_argument, nullptr, 's'},
-  {"zero", no_argument, nullptr, 'z'},
-  {"logical", no_argument, nullptr, 'L'},
-  {"physical", no_argument, nullptr, 'P'},
+  {"canonicalize", no_argument, NULL, 'E'},
+  {"canonicalize-existing", no_argument, NULL, 'e'},
+  {"canonicalize-missing", no_argument, NULL, 'm'},
+  {"relative-to", required_argument, NULL, RELATIVE_TO_OPTION},
+  {"relative-base", required_argument, NULL, RELATIVE_BASE_OPTION},
+  {"quiet", no_argument, NULL, 'q'},
+  {"strip", no_argument, NULL, 's'},
+  {"no-symlinks", no_argument, NULL, 's'},
+  {"zero", no_argument, NULL, 'z'},
+  {"logical", no_argument, NULL, 'L'},
+  {"physical", no_argument, NULL, 'P'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -71,22 +71,40 @@ usage (int status)
       fputs (_("\
 Print the resolved absolute file name.\n\
 "), stdout);
-      fputs (_("\
+      oputs (_("\
   -E, --canonicalize           all but the last component must exist (default)\
 \n\
+"));
+      oputs (_("\
   -e, --canonicalize-existing  all components of the path must exist\n\
+"));
+      oputs (_("\
   -m, --canonicalize-missing   no path components need exist or be a directory\
 \n\
+"));
+      oputs (_("\
   -L, --logical                resolve '..' components before symlinks\n\
+"));
+      oputs (_("\
   -P, --physical               resolve symlinks as encountered (default)\n\
+"));
+      oputs (_("\
   -q, --quiet                  suppress most error messages\n\
+"));
+      oputs (_("\
       --relative-to=DIR        print the resolved path relative to DIR\n\
+"));
+      oputs (_("\
       --relative-base=DIR      print absolute paths unless paths below DIR\n\
+"));
+      oputs (_("\
   -s, --strip, --no-symlinks   don't expand symlinks\n\
+"));
+      oputs (_("\
   -z, --zero                   end each output line with NUL, not newline\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       emit_ancillary_info (PROGRAM_NAME);
     }
   exit (status);
@@ -159,12 +177,15 @@ process_path (char const *fname, int can_mode)
 
   if (!can_relative_to
       || (can_relative_base && !path_prefix (can_relative_base, can_fname))
-      || (can_relative_to && !relpath (can_fname, can_relative_to, nullptr, 0)))
+      || (can_relative_to && !relpath (can_fname, can_relative_to, NULL, 0)))
     fputs (can_fname, stdout);
 
   putchar (use_nuls ? '\0' : '\n');
 
   free (can_fname);
+
+  if (ferror (stdout))
+    write_error ();
 
   return true;
 }
@@ -174,8 +195,8 @@ main (int argc, char **argv)
 {
   bool ok = true;
   int can_mode = CAN_ALL_BUT_LAST;
-  char const *relative_to = nullptr;
-  char const *relative_base = nullptr;
+  char const *relative_to = NULL;
+  char const *relative_base = NULL;
 
   initialize_main (&argc, &argv);
   set_program_name (argv[0]);
@@ -187,7 +208,7 @@ main (int argc, char **argv)
 
   while (true)
     {
-      int c = getopt_long (argc, argv, "EeLmPqsz", longopts, nullptr);
+      int c = getopt_long (argc, argv, "EeLmPqsz", longopts, NULL);
       if (c == -1)
         break;
       switch (c)
@@ -270,7 +291,7 @@ main (int argc, char **argv)
         {
           free (base);
           can_relative_base = can_relative_to;
-          can_relative_to = nullptr;
+          can_relative_to = NULL;
         }
     }
 

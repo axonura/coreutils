@@ -4,7 +4,7 @@
 # are established in tail_forever_inotify.  That new file would be ignored
 # indefinitely.
 
-# Copyright (C) 2015-2025 Free Software Foundation, Inc.
+# Copyright (C) 2015-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,9 +21,7 @@
 
 . "${srcdir=.}/tests/init.sh"; path_prepend_ ./src
 print_ver_ tail sleep
-
-grep '^#define HAVE_INOTIFY 1' "$CONFIG_HEADER" >/dev/null && is_local_dir_ . \
-  || skip_ 'inotify is not supported'
+require_inotify_supported_
 
 # Terminate any background gdb/tail process
 cleanup_() {

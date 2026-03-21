@@ -1,7 +1,7 @@
 #!/bin/sh
 # Ensure that "nproc" honors cgroup quotas
 
-# Copyright (C) 2025 Free Software Foundation, Inc.
+# Copyright (C) 2025-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ int
 sched_getscheduler (pid_t pid)
 {
   fclose (fopen ("preloaded","w")); /* marker for preloaded interception */
-  FILE* policyf = fopen ("/proc/self/sched", "r");
+  FILE *policyf = fopen ("/proc/self/sched", "r");
   int policy;
   #define fscanfmt fscanf  /* Avoid syntax check.  */
   if (pid == 0 && fscanfmt (policyf, "policy : %d", &policy) == 1)

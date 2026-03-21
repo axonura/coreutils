@@ -1,7 +1,7 @@
 #!/bin/sh
 # Make sure all of these programs promptly diagnose write errors.
 
-# Copyright (C) 2023-2025 Free Software Foundation, Inc.
+# Copyright (C) 2023-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,39 +18,51 @@
 
 . "${srcdir=.}/tests/init.sh"; path_prepend_ ./src
 print_ver_ timeout env
+getlimits_
 
 if ! test -w /dev/full || ! test -c /dev/full; then
   skip_ '/dev/full is required'
 fi
 
-# Writers that may output data indefinitely
-# First word in command line is checked against built programs
+dev_null_hash=$(cksum -a sha3 -l 256 /dev/null) || framework_failure_
+
+# Writers that may output data indefinitely.
+# First word in command line is checked against built programs.
+# Escapes must be double escaped.
 printf '%s' "\
 cat /dev/zero
+cksum --version; yes '${dev_null_hash}' | cksum --check
 comm -z /dev/zero /dev/zero
 cut -z -c1- /dev/zero
 cut -z -f1- /dev/zero
+date +%${OFF64_T_MAX}c
+date --version; yes 0 | date -f-
 dd if=/dev/zero
+du --version; yes /dev/null | tr '\\\\n' '\\\\0' | du -l --files0-from=-
 expand /dev/zero
 factor --version; yes 1 | factor
-# TODO: fmt /dev/zero
+fmt /dev/zero
+fmt --version; yes | fmt
 fold /dev/zero
 fold -b /dev/zero
 fold -c /dev/zero
-fold --version; yes | tr -d '\\n' | fold
+fold --version; yes | fold
 head -z -n-1 /dev/zero
 join -a 1 -z /dev/zero /dev/null
-# TODO: nl --version; yes | nl
-# TODO: numfmt --version; yes 1 | numfmt
+nl --version; yes | nl
+numfmt --version; yes 1 | numfmt
 od -v /dev/zero
 paste /dev/zero
-# TODO: pr /dev/zero
+pr /dev/zero
+pr --version; yes 1 | pr
 seq inf
+shuf -i 0-1 -r
 tail -n+1 -z /dev/zero
 tee < /dev/zero
 tr . . < /dev/zero
 unexpand /dev/zero
 uniq -z -D /dev/zero
+wc --version; yes /dev/null | tr '\\\\n' '\\\\0' | wc --files0-from=-
 yes
 " |
 sort -k 1b,1 > all_writers || framework_failure_
@@ -71,7 +83,7 @@ while read writer; do
   rm -f full.err || framework_failure_
   timeout 10 env --default-signal=PIPE $SHELL -c \
     "($ulimit && $writer 2>full.err >/dev/full)"
-  { test $? = 124 || ! grep 'space' full.err >/dev/null; } &&
+  { test $? = 124 || ! grep "$ENOSPC" full.err >/dev/null; } &&
    { fail=1; cat full.err; echo "$writer: failed to exit" >&2; }
 
   # Check closed pipe handling

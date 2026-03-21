@@ -1,7 +1,7 @@
 #!/bin/sh
 # Basic tests for "install".
 
-# Copyright (C) 1998-2025 Free Software Foundation, Inc.
+# Copyright (C) 1998-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -63,6 +63,11 @@ test -f $dd || fail=1
 # Make sure that the destination file has the requested permissions.
 mode=$(ls -l $dir/$dd|cut -b-10)
 test "$mode" = -r-xr-xr-x || fail=1
+
+# Ensure there are no issues with posix_spawnp() and large $PATHs
+# which we saw when initially changing from execvp() to posix_spawnp().
+PATH=$(printf '%4001s' '' | sed 's/\(.\{79\}\)./\1:/g'):$PATH \
+  ginstall $strip -c -m 555 $dd $dir || fail=1
 
 # These failed in coreutils CVS from 2004-06-25 to 2004-08-11.
 ginstall -d . || fail=1
@@ -154,5 +159,26 @@ if ! mkdir sub-ro/d; then
   returns_ 1 ginstall -d sub-ro/d 2>err || fail=1
   grep 'cannot create directory' err || { cat err; fail=1; }
 fi
+
+# Test install with --mode=+w (relative mode) ignores umask
+umask 0022 || framework_failure_
+touch file1 || framework_failure_
+ginstall file1 file2 --mode=+w || fail=1
+# Check that file2 has permissions --w--w--w-
+mode=$(ls -l file2|cut -b-10)
+test "$mode" = --w--w--w- || fail=1
+
+# Test comma-separated mode strings (like chmod)
+touch file3 || framework_failure_
+ginstall file3 file4 --mode='ug+rw,o+r' || fail=1
+# Check that file4 has permissions -rw-rw-r--
+mode=$(ls -l file4|cut -b-10)
+test "$mode" = -rw-rw-r-- || fail=1
+
+# Test comma-separated mode with directory creation
+ginstall -d testdir --mode='u+rwx,g+rx,o+r' || fail=1
+# Check that testdir has permissions drwxr-xr--
+mode=$(ls -ld testdir|cut -b-10)
+test "$mode" = drwxr-xr-- || fail=1
 
 Exit $fail

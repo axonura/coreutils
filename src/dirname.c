@@ -1,6 +1,6 @@
 /* dirname -- strip suffix from file name
 
-   Copyright (C) 1990-2025 Free Software Foundation, Inc.
+   Copyright (C) 1990-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -33,10 +33,10 @@
 
 static struct option const longopts[] =
 {
-  {"zero", no_argument, nullptr, 'z'},
+  {"zero", no_argument, NULL, 'z'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -55,11 +55,12 @@ Output each NAME with its last non-slash component and trailing slashes\n\
 removed; if NAME contains no /'s, output '.' (meaning the current directory).\n\
 \n\
 "), stdout);
-      fputs (_("\
-  -z, --zero     end each output line with NUL, not newline\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -z, --zero\n\
+         end each output line with NUL, not newline\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       printf (_("\
 \n\
 Examples:\n\
@@ -76,10 +77,7 @@ Examples:\n\
 int
 main (int argc, char **argv)
 {
-  static char const dot = '.';
   bool use_nuls = false;
-  char const *result;
-  size_t len;
 
   initialize_main (&argc, &argv);
   set_program_name (argv[0]);
@@ -91,7 +89,7 @@ main (int argc, char **argv)
 
   while (true)
     {
-      int c = getopt_long (argc, argv, "z", longopts, nullptr);
+      int c = getopt_long (argc, argv, "z", longopts, NULL);
 
       if (c == -1)
         break;
@@ -118,11 +116,12 @@ main (int argc, char **argv)
 
   for (; optind < argc; optind++)
     {
-      result = argv[optind];
-      len = dir_len (result);
+      char const *result = argv[optind];
+      idx_t len = dir_len (result);
 
       if (! len)
         {
+          static char const dot = '.';
           result = &dot;
           len = 1;
         }

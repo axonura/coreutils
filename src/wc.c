@@ -1,5 +1,5 @@
 /* wc - print the number of lines, words, and bytes in files
-   Copyright (C) 1985-2025 Free Software Foundation, Inc.
+   Copyright (C) 1985-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -19,7 +19,6 @@
 
 #include <config.h>
 
-#include <ctype.h>
 #include <stdio.h>
 #include <getopt.h>
 #include <sys/types.h>
@@ -31,6 +30,11 @@
 #include <readtokens0.h>
 #include <stat-size.h>
 #include <xbinary-io.h>
+
+#ifdef USE_NEON_WC_LINECOUNT
+# include <sys/auxv.h>
+# include <asm/hwcap.h>
+#endif
 
 #include "system.h"
 #include "cpu-supports.h"
@@ -99,17 +103,17 @@ enum
 
 static struct option const longopts[] =
 {
-  {"bytes", no_argument, nullptr, 'c'},
-  {"chars", no_argument, nullptr, 'm'},
-  {"lines", no_argument, nullptr, 'l'},
-  {"words", no_argument, nullptr, 'w'},
-  {"debug", no_argument, nullptr, DEBUG_PROGRAM_OPTION},
-  {"files0-from", required_argument, nullptr, FILES0_FROM_OPTION},
-  {"max-line-length", no_argument, nullptr, 'L'},
-  {"total", required_argument, nullptr, TOTAL_OPTION},
+  {"bytes", no_argument, NULL, 'c'},
+  {"chars", no_argument, NULL, 'm'},
+  {"lines", no_argument, NULL, 'l'},
+  {"words", no_argument, NULL, 'w'},
+  {"debug", no_argument, NULL, DEBUG_PROGRAM_OPTION},
+  {"files0-from", required_argument, NULL, FILES0_FROM_OPTION},
+  {"max-line-length", no_argument, NULL, 'L'},
+  {"total", required_argument, NULL, TOTAL_OPTION},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 enum total_type
@@ -121,7 +125,7 @@ enum total_type
   };
 static char const *const total_args[] =
 {
-  "auto", "always", "only", "never", nullptr
+  "auto", "always", "only", "never", NULL
 };
 static enum total_type const total_types[] =
 {
@@ -160,6 +164,21 @@ avx512_supported (void)
 }
 #endif
 
+#ifdef USE_NEON_WC_LINECOUNT
+static bool
+neon_supported (void)
+{
+  bool neon_enabled = (cpu_may_support ("asimd")
+                       && 0 < (getauxval (AT_HWCAP) & HWCAP_ASIMD));
+  if (debug)
+    error (0, 0, (neon_enabled
+                  ? _("using neon hardware support")
+                  : _("neon support not detected")));
+
+  return neon_enabled;
+}
+#endif
+
 void
 usage (int status)
 {
@@ -184,23 +203,44 @@ space delimited by white space characters or by start or end of input.\n\
 \n\
 The options below may be used to select which counts are printed, always in\n\
 the following order: newline, word, character, byte, maximum line length.\n\
-  -c, --bytes            print the byte counts\n\
-  -m, --chars            print the character counts\n\
-  -l, --lines            print the newline counts\n\
 "), stdout);
-      fputs (_("\
-      --files0-from=F    read input from the files specified by\n\
-                           NUL-terminated names in file F;\n\
-                           If F is - then read names from standard input\n\
-  -L, --max-line-length  print the maximum display width\n\
-  -w, --words            print the word counts\n\
-"), stdout);
-      fputs (_("\
-      --total=WHEN       when to print a line with total counts;\n\
-                           WHEN can be: auto, always, only, never\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -c, --bytes\n\
+         print the byte counts\n\
+"));
+      oputs (_("\
+  -m, --chars\n\
+         print the character counts\n\
+"));
+      oputs (_("\
+  -l, --lines\n\
+         print the newline counts\n\
+"));
+      oputs (_("\
+      --debug\n\
+         indicate what line count acceleration is used\n\
+"));
+      oputs (_("\
+      --files0-from=F\n\
+         read input from the files specified by\n\
+         NUL-terminated names in file F;\n\
+         If F is -, read names from standard input\n\
+"));
+      oputs (_("\
+  -L, --max-line-length\n\
+         print the maximum display width\n\
+"));
+      oputs (_("\
+  -w, --words\n\
+         print the word counts\n\
+"));
+      oputs (_("\
+      --total=WHEN\n\
+         when to print a line with total counts;\n\
+         WHEN can be: auto, always, only, never\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       emit_ancillary_info (PROGRAM_NAME);
     }
   exit (status);
@@ -255,6 +295,9 @@ write_counts (uintmax_t lines,
   if (file)
     printf (" %s", strchr (file, '\n') ? quotef (file) : file);
   putchar ('\n');
+
+  if (ferror (stdout))
+    write_error ();
 }
 
 /* Read FD and return a summary.  */
@@ -274,6 +317,13 @@ wc_lines (int fd)
     use_avx2 = avx2_supported () ? 1 : -1;
   if (0 < use_avx2)
     return wc_lines_avx2 (fd);
+#endif
+#ifdef USE_NEON_WC_LINECOUNT
+  static signed char use_neon;
+  if (!use_neon)
+    use_neon = neon_supported () ? 1 : -1;
+  if (0 < use_neon)
+    return wc_lines_neon (fd);
 #endif
 
   intmax_t lines = 0, bytes = 0;
@@ -744,7 +794,7 @@ main (int argc, char **argv)
   int optc;
   idx_t nfiles;
   char **files;
-  char *files_from = nullptr;
+  char *files_from = NULL;
   struct fstatus *fstatus;
   struct Tokens tok;
 
@@ -759,15 +809,11 @@ main (int argc, char **argv)
   page_size = getpagesize ();
   /* Line buffer stdout to ensure lines are written atomically and immediately
      so that processes running in parallel do not intersperse their output.  */
-  setvbuf (stdout, nullptr, _IOLBF, 0);
+  setvbuf (stdout, NULL, _IOLBF, 0);
 
-  posixly_correct = (getenv ("POSIXLY_CORRECT") != nullptr);
+  posixly_correct = (getenv ("POSIXLY_CORRECT") != NULL);
 
-  print_lines = print_words = print_chars = print_bytes = false;
-  print_linelength = false;
-  total_lines = total_words = total_chars = total_bytes = max_line_length = 0;
-
-  while ((optc = getopt_long (argc, argv, "clLmw", longopts, nullptr)) != -1)
+  while ((optc = getopt_long (argc, argv, "clLmw", longopts, NULL)) != -1)
     switch (optc)
       {
       case 'c':
@@ -842,7 +888,7 @@ main (int argc, char **argv)
       else
         {
           stream = fopen (files_from, "r");
-          if (stream == nullptr)
+          if (stream == NULL)
             error (EXIT_FAILURE, errno, _("cannot open %s for reading"),
                    quoteaf (files_from));
         }
@@ -865,14 +911,14 @@ main (int argc, char **argv)
         }
       else
         {
-          files = nullptr;
+          files = NULL;
           nfiles = 0;
           ai = argv_iter_init_stream (stream);
         }
     }
   else
     {
-      static char *stdin_only[] = { nullptr };
+      static char *stdin_only[] = { NULL };
       files = (optind < argc ? argv + optind : stdin_only);
       nfiles = (optind < argc ? argc - optind : 1);
       ai = argv_iter_init_argv (files);
@@ -909,7 +955,7 @@ main (int argc, char **argv)
              among many, knowing the record number may help.
              FIXME: currently print the record number only with
              --files0-from=FILE.  Maybe do it for argv, too?  */
-          if (files_from == nullptr)
+          if (files_from == NULL)
             error (0, 0, "%s", _("invalid zero-length file name"));
           else
             {
@@ -951,7 +997,7 @@ main (int argc, char **argv)
      However, no arguments on the --files0-from input stream is an error
      means don't read anything.  */
   if (ok && !files_from && argv_iter_n_args (ai) == 0)
-    ok &= wc_file (nullptr, &fstatus[0]);
+    ok &= wc_file (NULL, &fstatus[0]);
 
   if (read_tokens)
     readtokens0_free (&tok);
@@ -986,7 +1032,7 @@ main (int argc, char **argv)
 
       write_counts (total_lines, total_words, total_chars, total_bytes,
                     max_line_length,
-                    total_mode != total_only ? _("total") : nullptr);
+                    total_mode != total_only ? _("total") : NULL);
     }
 
   argv_iter_free (ai);

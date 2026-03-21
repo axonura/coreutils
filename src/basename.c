@@ -1,5 +1,5 @@
 /* basename -- strip directory and suffix from file names
-   Copyright (C) 1990-2025 Free Software Foundation, Inc.
+   Copyright (C) 1990-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -29,12 +29,12 @@
 
 static struct option const longopts[] =
 {
-  {"multiple", no_argument, nullptr, 'a'},
-  {"suffix", required_argument, nullptr, 's'},
-  {"zero", no_argument, nullptr, 'z'},
+  {"multiple", no_argument, NULL, 'a'},
+  {"suffix", required_argument, NULL, 's'},
+  {"zero", no_argument, NULL, 'z'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -56,13 +56,20 @@ If specified, also remove a trailing SUFFIX.\n\
 
       emit_mandatory_arg_note ();
 
-      fputs (_("\
-  -a, --multiple       support multiple arguments and treat each as a NAME\n\
-  -s, --suffix=SUFFIX  remove a trailing SUFFIX; implies -a\n\
-  -z, --zero           end each output line with NUL, not newline\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -a, --multiple\n\
+         support multiple arguments and treat each as a NAME\n\
+"));
+      oputs (_("\
+  -s, --suffix=SUFFIX\n\
+         remove a trailing SUFFIX; implies -a\n\
+"));
+      oputs (_("\
+  -z, --zero\n\
+         end each output line with NUL, not newline\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       printf (_("\
 \n\
 Examples:\n\
@@ -83,11 +90,8 @@ Examples:\n\
 static void
 remove_suffix (char *name, char const *suffix)
 {
-  char *np;
-  char const *sp;
-
-  np = name + strlen (name);
-  sp = suffix + strlen (suffix);
+  char *np = name + strlen (name);
+  char const *sp = suffix + strlen (suffix);
 
   while (np > name && sp > suffix)
     if (*--np != *--sp)
@@ -124,7 +128,7 @@ main (int argc, char **argv)
 {
   bool multiple_names = false;
   bool use_nuls = false;
-  char const *suffix = nullptr;
+  char const *suffix = NULL;
 
   initialize_main (&argc, &argv);
   set_program_name (argv[0]);
@@ -136,7 +140,7 @@ main (int argc, char **argv)
 
   while (true)
     {
-      int c = getopt_long (argc, argv, "+as:z", longopts, nullptr);
+      int c = getopt_long (argc, argv, "+as:z", longopts, NULL);
 
       if (c == -1)
         break;
@@ -183,7 +187,7 @@ main (int argc, char **argv)
     }
   else
     perform_basename (argv[optind],
-                      optind + 2 == argc ? argv[optind + 1] : nullptr,
+                      optind + 2 == argc ? argv[optind + 1] : NULL,
                       use_nuls);
 
   return EXIT_SUCCESS;

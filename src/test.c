@@ -2,7 +2,7 @@
 
 /* Modified to run with the GNU shell by bfox. */
 
-/* Copyright (C) 1987-2025 Free Software Foundation, Inc.
+/* Copyright (C) 1987-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,7 +21,6 @@
    the shell builtin version. */
 
 #include <config.h>
-#include <ctype.h>
 #include <stdio.h>
 #include <sys/types.h>
 
@@ -255,7 +254,7 @@ term (void)
           }
 
       value = posixtest (nargs);
-      if (argv[pos] == 0)
+      if (!argv[pos])
         test_syntax_error (_("%s expected"), quote (")"));
       else
         if (argv[pos][0] != ')' || argv[pos][1])
@@ -492,7 +491,7 @@ unary_operator (void)
         unary_advance ();
         arg = find_int (argv[pos - 1]);
         errno = 0;
-        fd = strtol (arg, nullptr, 10);
+        fd = strtol (arg, NULL, 10);
         return (errno != ERANGE && 0 <= fd && fd <= INT_MAX && isatty (fd));
       }
 
@@ -676,8 +675,8 @@ Usage: test EXPRESSION\n\
 Exit with the status determined by EXPRESSION.\n\
 \n\
 "), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       fputs (_("\
 \n\
 An omitted EXPRESSION defaults to false.  Otherwise,\n\
@@ -692,9 +691,17 @@ EXPRESSION is true or false and sets exit status.  It is one of:\n\
 "), stdout);
       fputs (_("\
 \n\
+"), stdout);
+      oputs (_("\
   -n STRING            the length of STRING is nonzero\n\
+"));
+      fputs (_("\
   STRING               equivalent to -n STRING\n\
+"), stdout);
+      oputs (_("\
   -z STRING            the length of STRING is zero\n\
+"));
+      fputs (_("\
   STRING1 = STRING2    the strings are equal\n\
   STRING1 != STRING2   the strings are not equal\n\
   STRING1 > STRING2    STRING1 is greater than STRING2 in the current locale\n\
@@ -702,48 +709,100 @@ EXPRESSION is true or false and sets exit status.  It is one of:\n\
 "), stdout);
       fputs (_("\
 \n\
+"), stdout);
+      oputs (_("\
   INTEGER1 -eq INTEGER2   INTEGER1 is equal to INTEGER2\n\
+"));
+      oputs (_("\
   INTEGER1 -ge INTEGER2   INTEGER1 is greater than or equal to INTEGER2\n\
+"));
+      oputs (_("\
   INTEGER1 -gt INTEGER2   INTEGER1 is greater than INTEGER2\n\
+"));
+      oputs (_("\
   INTEGER1 -le INTEGER2   INTEGER1 is less than or equal to INTEGER2\n\
+"));
+      oputs (_("\
   INTEGER1 -lt INTEGER2   INTEGER1 is less than INTEGER2\n\
+"));
+      oputs (_("\
   INTEGER1 -ne INTEGER2   INTEGER1 is not equal to INTEGER2\n\
-"), stdout);
+"));
       fputs (_("\
 \n\
+"), stdout);
+      oputs (_("\
   FILE1 -ef FILE2   FILE1 and FILE2 have the same device and inode numbers\n\
+"));
+      oputs (_("\
   FILE1 -nt FILE2   FILE1 is newer (modification date) than FILE2\n\
+"));
+      oputs (_("\
   FILE1 -ot FILE2   FILE1 is older than FILE2\n\
-"), stdout);
+"));
       fputs (_("\
 \n\
+"), stdout);
+      oputs (_("\
   -b FILE     FILE exists and is block special\n\
+"));
+      oputs (_("\
   -c FILE     FILE exists and is character special\n\
+"));
+      oputs (_("\
   -d FILE     FILE exists and is a directory\n\
+"));
+      oputs (_("\
   -e FILE     FILE exists\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -f FILE     FILE exists and is a regular file\n\
+"));
+      oputs (_("\
   -g FILE     FILE exists and is set-group-ID\n\
+"));
+      oputs (_("\
   -G FILE     FILE exists and is owned by the effective group ID\n\
+"));
+      oputs (_("\
   -h FILE     FILE exists and is a symbolic link (same as -L)\n\
+"));
+      oputs (_("\
   -k FILE     FILE exists and has its sticky bit set\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -L FILE     FILE exists and is a symbolic link (same as -h)\n\
+"));
+      oputs (_("\
   -N FILE     FILE exists and has been modified since it was last read\n\
+"));
+      oputs (_("\
   -O FILE     FILE exists and is owned by the effective user ID\n\
+"));
+      oputs (_("\
   -p FILE     FILE exists and is a named pipe\n\
+"));
+      oputs (_("\
   -r FILE     FILE exists and the user has read access\n\
+"));
+      oputs (_("\
   -s FILE     FILE exists and has a size greater than zero\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -S FILE     FILE exists and is a socket\n\
+"));
+      oputs (_("\
   -t FD       file descriptor FD is opened on a terminal\n\
+"));
+      oputs (_("\
   -u FILE     FILE exists and its set-user-ID bit is set\n\
+"));
+      oputs (_("\
   -w FILE     FILE exists and the user has write access\n\
+"));
+      oputs (_("\
   -x FILE     FILE exists and the user has execute (or search) access\n\
-"), stdout);
+"));
       fputs (_("\
 \n\
 Except for -h and -L, all FILE-related tests dereference symbolic links.\n\
@@ -821,7 +880,7 @@ main (int margc, char **margv)
           if (streq (margv[1], "--version"))
             {
               version_etc (stdout, PROGRAM_NAME, PACKAGE_NAME, Version, AUTHORS,
-                           (char *) nullptr);
+                           (char *) NULL);
               test_main_return (EXIT_SUCCESS);
             }
         }

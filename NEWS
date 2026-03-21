@@ -4,6 +4,216 @@ GNU coreutils NEWS                                    -*- outline -*-
 
 ** Bug fixes
 
+  'dd' now always diagnoses partial writes correctly upon write failure.
+  Previously it may have indicated that only full writes were performed.
+  [This bug was present in "the beginning".]
+
+  'fold' will no longer truncate output when encountering 0xFF bytes.
+  [bug introduced in coreutils-9.8]
+
+  'kill --help' now has links to valid anchors in the html manual.
+  [bug introduced in coreutils-9.10]
+
+  'pwd' on ancient systems will no longer overflow a buffer
+  when operating in deep paths longer than twice the system PATH_MAX.
+  [bug introduced in coreutils-9.6]
+
+  'stat --printf=%%N' no longer performs unnecessary checks of the QUOTING_STYLE
+  environment variable.
+  [bug introduced in coreutils-8.26]
+
+  'timeout' no longer exits abruptly when its parent is the init process, e.g.,
+  when started by the entrypoint of a container.
+  [bug introduced in coreutils-9.10]
+
+** New Features
+
+  'date --date' now parses dot delimited dd.mm.yy format common in Europe.
+  This is in addition to the already supported mm/dd/yy and yy-mm-dd formats.
+
+** Changes in behavior
+
+  'cksum --check' now uses shell quoting when required, to more robustly
+  escape file names output in diagnostics.
+  This also affects md5sum, sha*sum, and b2sum.
+
+** Improvements
+
+  'df --local' recognises more file system types as remote.
+  Specifically: autofs, ncpfs, smb, smb2, gfs, gfs2, userlandfs.
+
+  'expand' and 'unexpand' now support multi-byte characters.
+
+  'groups' and 'id' will now exit sooner after a write error,
+  which is significant when listing information for many users.
+
+  'install' now allows the combination of the --compare and
+  --preserve-timestamps options.
+
+  'fold', 'join', 'numfmt', 'uniq' now use more consistent blank character
+  determination on non GLIBC platforms.  For example \u3000 (ideographic space)
+  will be considered a blank character on all platforms.
+
+  'nl' now supports multi-byte --section-delimiter characters.
+
+  'shuf -i' now operates up to two times faster on systems with unlocked stdio
+  functions.
+
+  'timeout' now properly detects when it is reparented by a subreaper process on
+  Linux instead of init, e.g., the 'systemd --user' process.
+
+  'wc -l' now operates up to four and a half times faster on hosts that support
+  Neon instructions.
+
+  'yes' now uses zero-copy I/O on Linux to significantly increase throughput.
+  E.g., throughput improved 15x from 11.6GiB/s to 175GiB/s on a Power10 system.
+
+** Build-related
+
+  ./configure --enable-single-binary=hardlinks is now supported on systems
+  with dash as the system shell at /bin/sh.
+  [issue introduced in coreutils-9.10]
+
+  The test suite may have failed with a "Hangup" error if run non-interactively.
+  [issue introduced in coreutils-9.10]
+
+
+* Noteworthy changes in release 9.10 (2026-02-04) [stable]
+
+** Bug fixes
+
+  cp, install, and mv no longer enter an infinite loop copying sparse files
+  with SEEK_HOLE.  E.g., this was seen on ext4 when copying sparse files with
+  extents that are being actively updated, and copy offload is not being used.
+  [bug introduced in coreutils-9.9]
+
+  'date' no longer fails with format directives that return an empty string.
+  [bug introduced in coreutils-9.9]
+
+  'dd seek=N of=FILE' no longer continues copying, overwriting FILE if it
+  exists, if ftruncate fails.
+  [bug introduced in coreutils-9.1]
+
+  du and ls no longer modify strings returned by getenv.
+  POSIX says this is not portable.
+  [bug introduced in fileutils-4.1.6]
+
+  'fmt' now correctly diagnoses read errors.
+  Previously fmt generated a generic error for any read error.
+  [bug introduced in coreutils-9.0]
+
+  md5sum --text correctly translates CRLF line endings with the MSYS2 runtime.
+  This also applies to the sha*sum and b2sum utilities.
+  [This bug was present in "the beginning".]
+
+  'numfmt' no longer drops custom suffixes from numbers it cannot fully parse.
+  [bug introduced with numfmt in coreutils-8.21]
+
+  'tail -f --pid' can no longer exit upon receiving a non terminating signal.
+  On older Linux systems it may have failed with "Interrupted system call".
+  [bug introduced in coreutils-7.5]
+
+  'timeout' will now propagate all terminating signals to the monitored command.
+  Previously 'timeout' could have exited and left the monitored command running.
+  [bug introduced with timeout in coreutils-7.0]
+
+  wc now documents its --debug option, currently used to
+  indicate the line count acceleration being used.
+  [bug introduced in coreutils-9.0]
+
+  When built with `clang -fno-inline`, memory allocation issues are again
+  handled in a defined manner.  Previously programs may have crashed etc.
+  after a failure to allocate memory.
+  [bug introduced in coreutils-9.0]
+
+** New Features
+
+  configure accepts a new --enable-single-binary=hardlinks mode to build the
+  selected programs as hard links to a multi-call binary called "coreutils".
+  This augments the existing "symlinks" and "shebangs" modes already
+  supported by the --enable-single-binary option.
+
+  'stat' and 'tail' now know about the "guest-memfd" file system type.
+  stat -f -c%T now reports the file system type,
+  and tail -f uses polling for this file system.
+
+  'tail' now accepts the --debug option, which is currently used to
+  detail the --follow implementation being used.
+
+  'du' now supports the short option -A corresponding to the existing long
+  option --apparent-size, for compatibility with FreeBSD.
+
+** Changes in behavior
+
+  All commands now markup option names in --help and man pages,
+  with bold attributes, and hyperlinks into the online manual on gnu.org.
+  The links can be configured with the --enable-manual-url configure option,
+  and the bold highlighting with --disable-bold-man-page-references.
+  At runtime all markup can be disabled with the TERM=dumb env var value.
+
+  'fmt' -w,--width no longer includes '\n' in the width of a line.
+  I.e., the specified width is interpreted to be an _inclusive_ maximum.
+
+  'ls --hyperlink' now uses more standard format hyperlinks.
+  'ESC\' (ST) is now used as a delimiter, instead of '\a' (BEL).
+
+  'ptx' -t is no longer a no-op, and now sets the default width to 100 columns.
+
+  'timeout' now honors ignored signals and will not propagate them.  E.g.,
+  timeout(1) in a shell backgrounded job, will not terminate upon receiving
+  SIGINT or SIGQUIT, as these are ignored by default in shell background jobs.
+
+  'timeout -v -s 0' now prints the signal number 0 instead of EXIT.
+
+  The multi-call binary now only processes --help or --version options
+  if it is installed with a name ending with "coreutils".  This allows
+  for more consistent handling of these options with unsupported commands.
+
+** Improvements
+
+  The multi-call binary built with configure --enable-single-binary
+  is reduced in size by 3.2% through the more efficient reuse of the cksum
+  utility by the md5sum and sha*sum utilities.
+
+  'cksum' now validates its options more consistently.
+  E.g., `cksum --text --tag` now fails like `cksum --tag --text` already did.
+
+  'cksum', 'du', and 'wc' now exit promptly upon receiving a write
+  error, which is significant when processing many input files.
+
+  csplit, ls, and sort, now handle a more complete set of terminating signals.
+
+  'du' now processes directories with 10,000 or more entries up to 9 times
+  faster on the Lustre file system.
+
+  'paste' now supports multi-byte --delimiters characters.
+
+  'pinky' will now exit immediately upon receiving a write error, which is
+  significant when reading large plan or project files.
+
+  'readlink' and 'realpath' will now exit promptly upon receiving a write error,
+  which is significant when canonicalizing multiple file names longer than
+  PATH_MAX.
+
+  'timeout' on Linux will always terminate the child in the case where the
+  timeout process itself dies, like when it receives a KILL signal for example.
+
+** Build-related
+
+  Programs now port to C23 platforms that strictly check types when
+  qualifier-generic functions like strchr are used.
+
+  'chcon' and 'runcon' stub binaries will be built on systems without
+  libselinux, when configured using --with-selinux.
+
+  'kill' and 'uptime' are no longer built by default.  These programs can be
+  built with the --enable-install-program=kill,uptime configure option.
+
+
+* Noteworthy changes in release 9.9 (2025-11-10) [stable]
+
+** Bug fixes
+
   `basenc --base58` would not operate correctly with input > 15561475 bytes.
   [bug introduced with --base58 in coreutils-9.8]
 
@@ -18,12 +228,31 @@ GNU coreutils NEWS                                    -*- outline -*-
   Also non standard SHA2 tags with a bad length resulted in undefined behavior.
   [bug introduced in coreutils-9.8]
 
+  'cp' restores performance with transparently compressed files, which
+  regressed due to the avoidance of copy offload, seen with OpenZFS at least.
+  [bug introduced in coreutils-9.8]
+
+  `env` on macOS, for now only when built with --disable-nls,
+  will no longer always set a __CF_USER_TEXT_ENCODING environment variable.
+  [bug introduced in coreutils-9.8]
+
+  'nice' now limits the adjusted niceness value to its supported range on
+  GNU/Hurd.
+  [This bug was present in "the beginning".]
+
   'numfmt' no longer reads out-of-bounds memory with trailing blanks in input.
   [bug introduced with numfmt in coreutils-8.21]
+
+  'numfmt' no longer outputs invalid characters with multi-byte blanks in input.
+  [bug introduced in coreutils-9.5]
 
   'rm -d DIR' no longer fails on Ceph snapshot directories.
   Although these directories are nonempty, 'rmdir DIR' succeeds on them.
   [bug introduced in coreutils-8.16]
+
+  'sort --compress-program' now diagnoses if it can't write more data to an
+  exited compressor.  Previously sort could have exited silently in this case.
+  [bug introduced in coreutils-6.8]
 
   'tail' outputs the correct number of lines again for non-small -n values.
   Previously it may have output too few lines.
@@ -33,9 +262,46 @@ GNU coreutils NEWS                                    -*- outline -*-
   that use the GNU extension /NUM or +NUM formats.
   [bug introduced in coreutils-8.28]
 
+** Changes in behavior
+
+  'cp' with default options may again, like with versions before v9.8,
+  miss opportunities to create holes with file systems that support
+  SEEK_HOLE only trivially.  This change is a consequence of the
+  abovementioned copy offload fix.
+
+  'sort --compress-program' will continue without compressing temporary files
+  if the specified program cannot be executed.  Also malformed shell scripts
+  without a "shebang line" will no longer be executed.
+
+** New Features
+
+  'numfmt' now accepts the --unit-separator=SEP option, to output or accept
+  a separator between the number and unit.  For e.g. "1234 M".
+
 ** Improvements
 
+  'fmt', 'date', 'nl', and 'pr' will now exit promptly upon receiving a write
+  error, which is significant when reading large / unbounded inputs.
+
+  install, sort, and split now use posix_spawn() to invoke child programs more
+  efficiently and more independently from their own memory usage.
+
+  'numfmt':
+   - parses numbers with a non-breaking space character before a unit
+   - parses numbers containing grouping characters from the current locale
+   - supports a multi-byte --delimiter character
+   - no longer processes input indefinitely in the presence of write errors
+
   wc -l now operates 10% faster on hosts that support AVX512 instructions.
+
+** Build-related
+
+  chcon and runcon are not built by default if selinux headers are not present,
+  or if the --without-selinux configure option is specified.
+  This can be overridden with the --with-selinux configure option.
+
+  nproc no longer fails to build with Android API level <= 20.
+  [build issue introduced in coreutils-9.8]
 
 
 * Noteworthy changes in release 9.8 (2025-09-22) [stable]
@@ -6256,15 +6522,13 @@ point at which the packages merged to form the coreutils:
 * who once again prints whatever host information it has, even without --lookup
 
 ========================================================================
-For older NEWS entries for the fileutils, textutils, and sh-utils
-packages, see ./old/*/NEWS.
 
   This package began as the union of the following:
   textutils-2.1, fileutils-4.1.11, sh-utils-2.0.15.
 
 ========================================================================
 
-Copyright (C) 2001-2025 Free Software Foundation, Inc.
+Copyright (C) 2001-2026 Free Software Foundation, Inc.
 
 Permission is granted to copy, distribute and/or modify this document
 under the terms of the GNU Free Documentation License, Version 1.3 or

@@ -1,5 +1,5 @@
 /* fold -- wrap each input line to fit in specified width.
-   Copyright (C) 1991-2025 Free Software Foundation, Inc.
+   Copyright (C) 1991-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,7 +18,6 @@
 
 #include <config.h>
 
-#include <ctype.h>
 #include <stdio.h>
 #include <getopt.h>
 #include <sys/types.h>
@@ -58,13 +57,13 @@ static char const shortopts[] = "bcsw:0::1::2::3::4::5::6::7::8::9::";
 
 static struct option const longopts[] =
 {
-  {"bytes", no_argument, nullptr, 'b'},
-  {"characters", no_argument, nullptr, 'c'},
-  {"spaces", no_argument, nullptr, 's'},
-  {"width", required_argument, nullptr, 'w'},
+  {"bytes", no_argument, NULL, 'b'},
+  {"characters", no_argument, NULL, 'c'},
+  {"spaces", no_argument, NULL, 's'},
+  {"width", required_argument, NULL, 'w'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -85,14 +84,24 @@ Wrap input lines in each FILE, writing to standard output.\n\
       emit_stdin_note ();
       emit_mandatory_arg_note ();
 
-      fputs (_("\
-  -b, --bytes         count bytes rather than columns\n\
-  -c, --characters    count characters rather than columns\n\
-  -s, --spaces        break at spaces\n\
-  -w, --width=WIDTH   use WIDTH columns instead of 80\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -b, --bytes\n\
+         count bytes rather than columns\n\
+"));
+      oputs (_("\
+  -c, --characters\n\
+         count characters rather than columns\n\
+"));
+      oputs (_("\
+  -s, --spaces\n\
+         break after blanks, or in words greater than WIDTH\n\
+"));
+      oputs (_("\
+  -w, --width=WIDTH\n\
+         use WIDTH columns instead of 80\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       emit_ancillary_info (PROGRAM_NAME);
     }
   exit (status);
@@ -165,7 +174,7 @@ fold_file (char const *filename, size_t width)
   else
     istream = fopen (filename, "r");
 
-  if (istream == nullptr)
+  if (istream == NULL)
     {
       error (0, errno, "%s", quotef (filename));
       return false;
@@ -201,7 +210,7 @@ fold_file (char const *filename, size_t width)
               for (mcel_t g2; logical_p < logical_lim; logical_p += g2.len)
                 {
                   g2 = mcel_scan (logical_p, logical_lim);
-                  if (c32isblank (g2.ch) && ! c32isnbspace (g2.ch))
+                  if (c32issep (g2.ch))
                     {
                       space_length = g2.len;
                       logical_end = logical_p - line_out;
@@ -280,7 +289,6 @@ int
 main (int argc, char **argv)
 {
   size_t width = 80;
-  int i;
   int optc;
   bool ok;
 
@@ -292,9 +300,7 @@ main (int argc, char **argv)
 
   atexit (close_stdout);
 
-  break_spaces = have_read_stdin = false;
-
-  while ((optc = getopt_long (argc, argv, shortopts, longopts, nullptr)) != -1)
+  while ((optc = getopt_long (argc, argv, shortopts, longopts, NULL)) != -1)
     {
       char optargbuf[2];
 
@@ -343,7 +349,7 @@ main (int argc, char **argv)
   else
     {
       ok = true;
-      for (i = optind; i < argc; i++)
+      for (int i = optind; i < argc; i++)
         ok &= fold_file (argv[i], width);
     }
 

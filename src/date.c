@@ -1,5 +1,5 @@
 /* date - print or set the system date and time
-   Copyright (C) 1989-2025 Free Software Foundation, Inc.
+   Copyright (C) 1989-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -60,7 +60,7 @@ static char const *const time_spec_string[] =
   /* Put "hours" and "minutes" first, since they aren't valid for
      --rfc-3339.  */
   "hours", "minutes",
-  "date", "seconds", "ns", nullptr
+  "date", "seconds", "ns", NULL
 };
 static enum Time_spec const time_spec[] =
 {
@@ -85,23 +85,23 @@ static char const short_options[] = "d:f:I::r:Rs:u";
 
 static struct option const long_options[] =
 {
-  {"date", required_argument, nullptr, 'd'},
-  {"debug", no_argument, nullptr, DEBUG_DATE_PARSING_OPTION},
-  {"file", required_argument, nullptr, 'f'},
-  {"iso-8601", optional_argument, nullptr, 'I'},
-  {"reference", required_argument, nullptr, 'r'},
-  {"resolution", no_argument, nullptr, RESOLUTION_OPTION},
-  {"rfc-email", no_argument, nullptr, 'R'},
-  {"rfc-822", no_argument, nullptr, 'R'},
-  {"rfc-2822", no_argument, nullptr, 'R'},
-  {"rfc-3339", required_argument, nullptr, RFC_3339_OPTION},
-  {"set", required_argument, nullptr, 's'},
-  {"uct", no_argument, nullptr, 'u'},
-  {"utc", no_argument, nullptr, 'u'},
-  {"universal", no_argument, nullptr, 'u'},
+  {"date", required_argument, NULL, 'd'},
+  {"debug", no_argument, NULL, DEBUG_DATE_PARSING_OPTION},
+  {"file", required_argument, NULL, 'f'},
+  {"iso-8601", optional_argument, NULL, 'I'},
+  {"reference", required_argument, NULL, 'r'},
+  {"resolution", no_argument, NULL, RESOLUTION_OPTION},
+  {"rfc-email", no_argument, NULL, 'R'},
+  {"rfc-822", no_argument, NULL, 'R'},  /* Deprecated.  */
+  {"rfc-2822", no_argument, NULL, 'R'},  /* Deprecated.  */
+  {"rfc-3339", required_argument, NULL, RFC_3339_OPTION},
+  {"set", required_argument, NULL, 's'},
+  {"uct", no_argument, NULL, 'u'},  /* Deprecated.  */
+  {"utc", no_argument, NULL, 'u'},
+  {"universal", no_argument, NULL, 'u'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 /* flags for parse_datetime2 */
@@ -128,56 +128,68 @@ usage (int status)
     {
       printf (_("\
 Usage: %s [OPTION]... [+FORMAT]\n\
-  or:  %s [-u|--utc|--universal] [MMDDhhmm[[CC]YY][.ss]]\n\
+  or:  %s [OPTION]... MMDDhhmm[[CC]YY][.ss]\n\
 "),
               program_name, program_name);
       fputs (_("\
 Display date and time in the given FORMAT.\n\
-With -s, or with [MMDDhhmm[[CC]YY][.ss]], set the date and time.\n\
+With -s, or with MMDDhhmm[[CC]YY][.ss], set the date and time first.\n\
 "), stdout);
 
       emit_mandatory_arg_note ();
 
-      fputs (_("\
-  -d, --date=STRING          display time described by STRING, not 'now'\n\
-"), stdout);
-      fputs (_("\
-      --debug                annotate the parsed date, and\n\
-                              warn about questionable usage to standard error\n\
-"), stdout);
-      fputs (_("\
-  -f, --file=DATEFILE        like --date; once for each line of DATEFILE\n\
-"), stdout);
-      fputs (_("\
-  -I[FMT], --iso-8601[=FMT]  output date/time in ISO 8601 format.\n\
-                               FMT='date' for date only (the default),\n\
-                               'hours', 'minutes', 'seconds', or 'ns'\n\
-                               for date and time to the indicated precision.\n\
-                               Example: 2006-08-14T02:34:56-06:00\n\
-"), stdout);
-      fputs (_("\
-  --resolution               output the available resolution of timestamps\n\
-                               Example: 0.000000001\n\
-"), stdout);
-      fputs (_("\
-  -R, --rfc-email            output date and time in RFC 5322 format.\n\
-                               Example: Mon, 14 Aug 2006 02:34:56 -0600\n\
-"), stdout);
-      fputs (_("\
-      --rfc-3339=FMT         output date/time in RFC 3339 format.\n\
-                               FMT='date', 'seconds', or 'ns'\n\
-                               for date and time to the indicated precision.\n\
-                               Example: 2006-08-14 02:34:56-06:00\n\
-"), stdout);
-      fputs (_("\
-  -r, --reference=FILE       display the last modification time of FILE\n\
-"), stdout);
-      fputs (_("\
-  -s, --set=STRING           set time described by STRING\n\
-  -u, --utc, --universal     print or set Coordinated Universal Time (UTC)\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -d, --date=STRING\n\
+         display time described by STRING, not 'now'\n\
+"));
+      oputs (_("\
+      --debug\n\
+         annotate the parsed date,\n\
+         and warn about questionable usage to standard error\n\
+"));
+      oputs (_("\
+  -f, --file=DATEFILE\n\
+         like --date; once for each line of DATEFILE;\n\
+         if DATEFILE is -, read names from standard input\n\
+"));
+      oputs (_("\
+  -I[FMT], --iso-8601[=FMT]\n\
+         output date/time in ISO 8601 format.\n\
+         FMT='date' (default), 'hours', 'minutes', 'seconds', or 'ns'\n\
+         for date and time to the indicated precision.\n\
+         Example: 2006-08-14T02:34:56-06:00\n\
+"));
+      oputs (_("\
+      --resolution\n\
+         output the available resolution of timestamps.\n\
+         Example: 0.000000001\n\
+"));
+      oputs (_("\
+  -R, --rfc-email\n\
+         output date and time in RFC 5322 format.\n\
+         Example: Mon, 14 Aug 2006 02:34:56 +0000\n\
+"));
+      oputs (_("\
+      --rfc-3339=FMT\n\
+         output date/time in RFC 3339 format.\n\
+         FMT='date', 'seconds', or 'ns'\n\
+         for date and time to the indicated precision.\n\
+         Example: 2006-08-14 02:34:56-06:00\n\
+"));
+      oputs (_("\
+  -r, --reference=FILE\n\
+         display the last modification time of FILE\n\
+"));
+      oputs (_("\
+  -s, --set=STRING\n\
+         set time described by STRING\n\
+"));
+      oputs (_("\
+  -u, --utc, --universal\n\
+         print or set Coordinated Universal Time (UTC)\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       fputs (_("\
 \n\
 All options that specify the date to display are mutually exclusive.\n\
@@ -305,12 +317,12 @@ res_width (long int res)
 
 /* Return a newly allocated copy of FORMAT with each "%-N" adjusted to
    be "%9N", "%6N", or whatever other resolution is appropriate for
-   the current platform.  If no "%-N" appears, return nullptr.  */
+   the current platform.  If no "%-N" appears, return NULL.  */
 
 static char *
 adjust_resolution (char const *format)
 {
-  char *copy = nullptr;
+  char *copy = NULL;
 
   for (char const *f = format; *f; f++)
     if (f[0] == '%')
@@ -343,7 +355,7 @@ set_LC_TIME (char const *locale)
      (in order to distinguish the default locale from the C locale on platforms
      like macOS).  */
   char const *all = getenv ("LC_ALL");
-  if (all != nullptr && *all != '\0')
+  if (all != NULL && *all != '\0')
     {
       /* Setting LC_TIME when LC_ALL is set would have no effect.  Therefore we
          have to unset LC_ALL and sets its value to all locale categories that
@@ -359,8 +371,8 @@ set_LC_TIME (char const *locale)
 
   /* Set LC_TIME as an environment variable.  */
   char const *value = getenv ("LC_TIME");
-  char *ret = (value == nullptr || *value == '\0' ? nullptr : xstrdup (value));
-  if (locale != nullptr)
+  char *ret = (value == NULL || *value == '\0' ? NULL : xstrdup (value));
+  if (locale != NULL)
     xsetenv ("LC_TIME", locale, 1);
   else
     unsetenv ("LC_TIME");
@@ -404,11 +416,7 @@ batch_convert (char const *input_filename,
                char const *format, bool format_in_c_locale,
                timezone_t tz, char const *tzstring)
 {
-  bool ok;
   FILE *in_stream;
-  char *line;
-  size_t buflen;
-  struct timespec when;
 
   if (streq (input_filename, "-"))
     {
@@ -418,13 +426,13 @@ batch_convert (char const *input_filename,
   else
     {
       in_stream = fopen (input_filename, "r");
-      if (in_stream == nullptr)
+      if (in_stream == NULL)
         error (EXIT_FAILURE, errno, "%s", quotef (input_filename));
     }
 
-  line = nullptr;
-  buflen = 0;
-  ok = true;
+  char *line = NULL;
+  size_t buflen = 0;
+  bool ok = true;
   while (true)
     {
       ssize_t line_length = getline (&line, &buflen, in_stream);
@@ -436,7 +444,8 @@ batch_convert (char const *input_filename,
           break;
         }
 
-      if (! parse_datetime2 (&when, line, nullptr,
+      struct timespec when;
+      if (! parse_datetime2 (&when, line, NULL,
                              parse_datetime_flags, tz, tzstring))
         {
           if (line[line_length - 1] == '\n')
@@ -448,6 +457,9 @@ batch_convert (char const *input_filename,
         {
           ok &= show_date_helper (format, format_in_c_locale, when, tz);
         }
+
+      if (ferror (stdout))
+        write_error ();
     }
 
   if (fclose (in_stream) == EOF)
@@ -461,18 +473,14 @@ batch_convert (char const *input_filename,
 int
 main (int argc, char **argv)
 {
-  int optc;
-  char const *datestr = nullptr;
-  char const *set_datestr = nullptr;
-  struct timespec when;
+  char const *datestr = NULL;
+  char const *set_datestr = NULL;
   bool set_date = false;
-  char const *format = nullptr;
+  char const *format = NULL;
   bool format_in_c_locale = false;
   bool get_resolution = false;
-  char *batch_file = nullptr;
-  char *reference = nullptr;
-  struct stat refstats;
-  bool ok;
+  char *batch_file = NULL;
+  char *reference = NULL;
   bool discarded_datestr = false;
   bool discarded_set_datestr = false;
 
@@ -484,7 +492,8 @@ main (int argc, char **argv)
 
   atexit (close_stdout);
 
-  while ((optc = getopt_long (argc, argv, short_options, long_options, nullptr))
+  int optc;
+  while ((optc = getopt_long (argc, argv, short_options, long_options, NULL))
          != -1)
     {
       switch (optc)
@@ -637,13 +646,14 @@ main (int argc, char **argv)
   char const *tzstring = getenv ("TZ");
   timezone_t tz = tzalloc (tzstring);
 
-  if (batch_file != nullptr)
+  bool ok = true;
+  if (batch_file != NULL)
     ok = batch_convert (batch_file, format_res, format_in_c_locale,
                         tz, tzstring);
   else
     {
       bool valid_date = true;
-      ok = true;
+      struct timespec when;
 
       if (!option_specified_date && !set_date)
         {
@@ -668,8 +678,9 @@ main (int argc, char **argv)
       else
         {
           /* (option_specified_date || set_date) */
-          if (reference != nullptr)
+          if (reference != NULL)
             {
+              struct stat refstats;
               if (stat (reference, &refstats) != 0)
                 error (EXIT_FAILURE, errno, "%s", quotef (reference));
               when = get_stat_mtime (&refstats);
@@ -684,7 +695,7 @@ main (int argc, char **argv)
             {
               if (set_datestr)
                 datestr = set_datestr;
-              valid_date = parse_datetime2 (&when, datestr, nullptr,
+              valid_date = parse_datetime2 (&when, datestr, NULL,
                                             parse_datetime_flags,
                                             tz, tzstring);
             }

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Miscellaneous tests for "ln".
 
-# Copyright (C) 1998-2025 Free Software Foundation, Inc.
+# Copyright (C) 1998-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -126,6 +126,27 @@ done
 # I'm including it here, in case some day programs like valgrind detect that.
 # Purify probably would have done so.
 ln foo '' 2> /dev/null
+
+# ===================================================
+# Verify that -f and -i override each other, last one wins.
+
+# -sif: force should win (no prompt, overwrite)
+rm -f a b
+touch a b || framework_failure_
+ln -sif a b || fail=1
+test -L b || fail=1
+
+# -sfi: interactive should win; answering "n" should keep b unchanged
+rm -f a b
+touch a b || framework_failure_
+echo n | ln -sfi a b || :
+test -L b && fail=1
+
+# -sfi: interactive should win; answering "y" should create symlink
+rm -f a b
+touch a b || framework_failure_
+echo y | ln -sfi a b || fail=1
+test -L b || fail=1
 
 # ===================================================
 

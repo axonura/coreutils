@@ -1,5 +1,5 @@
 /* GNU's who.
-   Copyright (C) 1992-2025 Free Software Foundation, Inc.
+   Copyright (C) 1992-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -35,6 +35,7 @@
 #include "readutmp.h"
 #include "hard-locale.h"
 #include "quote.h"
+#include "xvasprintf.h"
 
 #ifdef TTY_GROUP_NAME
 # include <grp.h>
@@ -152,24 +153,24 @@ enum
 
 static struct option const longopts[] =
 {
-  {"all", no_argument, nullptr, 'a'},
-  {"boot", no_argument, nullptr, 'b'},
-  {"count", no_argument, nullptr, 'q'},
-  {"dead", no_argument, nullptr, 'd'},
-  {"heading", no_argument, nullptr, 'H'},
-  {"login", no_argument, nullptr, 'l'},
-  {"lookup", no_argument, nullptr, LOOKUP_OPTION},
-  {"message", no_argument, nullptr, 'T'},
-  {"mesg", no_argument, nullptr, 'T'},
-  {"process", no_argument, nullptr, 'p'},
-  {"runlevel", no_argument, nullptr, 'r'},
-  {"short", no_argument, nullptr, 's'},
-  {"time", no_argument, nullptr, 't'},
-  {"users", no_argument, nullptr, 'u'},
-  {"writable", no_argument, nullptr, 'T'},
+  {"all", no_argument, NULL, 'a'},
+  {"boot", no_argument, NULL, 'b'},
+  {"count", no_argument, NULL, 'q'},
+  {"dead", no_argument, NULL, 'd'},
+  {"heading", no_argument, NULL, 'H'},
+  {"login", no_argument, NULL, 'l'},
+  {"lookup", no_argument, NULL, LOOKUP_OPTION},
+  {"message", no_argument, NULL, 'T'},
+  {"mesg", no_argument, NULL, 'T'},
+  {"process", no_argument, NULL, 'p'},
+  {"runlevel", no_argument, NULL, 'r'},
+  {"short", no_argument, NULL, 's'},
+  {"time", no_argument, NULL, 't'},
+  {"users", no_argument, NULL, 'u'},
+  {"writable", no_argument, NULL, 'T'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 /* Return a string representing the time between WHEN and now.
@@ -233,7 +234,6 @@ print_line (char const *user, const char state,
   char x_idle[1 + IDLESTR_LEN + 1];
   char x_pid[1 + INT_STRLEN_BOUND (pid_t) + 1];
   char *x_exitstr;
-  int err;
 
   mesg[1] = state;
 
@@ -253,32 +253,29 @@ print_line (char const *user, const char state,
   else
     *x_exitstr = '\0';
 
-  err = asprintf (&buf,
-                  "%-8s"
-                  "%s"
-                  " %-12s"
-                  " %-*s"
-                  "%s"
-                  "%s"
-                  " %-8s"
-                  "%s"
-                  ,
-                  user ? user : "   .",
-                  include_mesg ? mesg : "",
-                  line,
-                  time_format_width,
-                  time_str,
-                  x_idle,
-                  x_pid,
-                  /* FIXME: it's not really clear whether the following
-                     field should be in the short_output.  A strict reading
-                     of SUSv2 would suggest not, but I haven't seen any
-                     implementations that actually work that way... */
-                  comment,
-                  x_exitstr
+  buf = xasprintf ("%-8s"
+                   "%s"
+                   " %-12s"
+                   " %-*s"
+                   "%s"
+                   "%s"
+                   " %-8s"
+                   "%s"
+                   ,
+                   user ? user : "   .",
+                   include_mesg ? mesg : "",
+                   line,
+                   time_format_width,
+                   time_str,
+                   x_idle,
+                   x_pid,
+                   /* FIXME: it's not really clear whether the following
+                      field should be in the short_output.  A strict reading
+                      of SUSv2 would suggest not, but I haven't seen any
+                      implementations that actually work that way... */
+                   comment,
+                   x_exitstr
                   );
-  if (err == -1)
-    xalloc_die ();
 
   {
     /* Remove any trailing spaces.  */
@@ -363,8 +360,8 @@ print_user (STRUCT_UTMP const *utmp_ent, time_t boottime)
 #if HAVE_STRUCT_XTMP_UT_HOST
   if (utmp_ent->ut_host[0])
     {
-      char *host = nullptr;
-      char *display = nullptr;
+      char *host = NULL;
+      char *display = NULL;
       char *ut_host = utmp_ent->ut_host;
 
       /* Look for an X display.  */
@@ -387,7 +384,7 @@ print_user (STRUCT_UTMP const *utmp_ent, time_t boottime)
           if (hostlen < needed)
             {
               free (hoststr);
-              hoststr = xpalloc (nullptr, &hostlen, needed - hostlen, -1, 1);
+              hoststr = xpalloc (NULL, &hostlen, needed - hostlen, -1, 1);
             }
           char *p = hoststr;
           *p++ = '(';
@@ -401,7 +398,7 @@ print_user (STRUCT_UTMP const *utmp_ent, time_t boottime)
           if (hostlen < needed)
             {
               free (hoststr);
-              hoststr = xpalloc (nullptr, &hostlen, needed - hostlen, -1, 1);
+              hoststr = xpalloc (NULL, &hostlen, needed - hostlen, -1, 1);
             }
           char *p = hoststr;
           *p++ = '(';
@@ -559,7 +556,7 @@ print_heading (void)
 static void
 scan_entries (idx_t n, STRUCT_UTMP const *utmp_buf)
 {
-  char *ttyname_b IF_LINT ( = nullptr);
+  char *ttyname_b IF_LINT ( = NULL);
   time_t boottime = TYPE_MINIMUM (time_t);
 
   if (include_heading)
@@ -638,33 +635,57 @@ Print information about users who are currently logged in.\n\
 "), stdout);
       fputs (_("\
 \n\
+"), stdout);
+      oputs (_("\
   -a, --all         same as -b -d --login -p -r -t -T -u\n\
+"));
+      oputs (_("\
   -b, --boot        time of last system boot\n\
+"));
+      oputs (_("\
   -d, --dead        print dead processes\n\
+"));
+      oputs (_("\
   -H, --heading     print line of column headings\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -l, --login       print system login processes\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
       --lookup      attempt to canonicalize hostnames via DNS\n\
+"));
+      oputs (_("\
   -m                only hostname and user associated with standard input\n\
+"));
+      oputs (_("\
   -p, --process     print active processes spawned by init\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -q, --count       all login names and number of users logged on\n\
+"));
+      oputs (_("\
   -r, --runlevel    print current runlevel\n\
+"));
+      oputs (_("\
   -s, --short       print only name, line, and time (default)\n\
+"));
+      oputs (_("\
   -t, --time        print last system clock change\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -T, -w, --mesg    add user's message status as +, - or ?\n\
-  -u, --users       list users logged in\n\
+"));
+      oputs (_("\
+  -u, --users       list users logged in, including idle time\n\
+"));
+      oputs (_("\
       --message     same as -T\n\
+"));
+      oputs (_("\
       --writable    same as -T\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       printf (_("\
 \n\
 If FILE is not specified, use %s.  %s as FILE is common.\n\
@@ -689,7 +710,7 @@ main (int argc, char **argv)
 
   atexit (close_stdout);
 
-  while ((optc = getopt_long (argc, argv, "abdlmpqrstuwHT", longopts, nullptr))
+  while ((optc = getopt_long (argc, argv, "abdlmpqrstuwHT", longopts, NULL))
          != -1)
     {
       switch (optc)

@@ -1,5 +1,5 @@
 /* system-dependent definitions for coreutils
-   Copyright (C) 1989-2025 Free Software Foundation, Inc.
+   Copyright (C) 1989-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@
 #include <attribute.h>
 
 #include <alloca.h>
+
+#include <ctype.h>
 
 #include <sys/stat.h>
 
@@ -158,6 +160,30 @@ c32isnbspace (char32_t wc)
   return wc == 0x00A0 || wc == 0x2007 || wc == 0x202F || wc == 0x2060;
 }
 
+ATTRIBUTE_PURE
+static inline int
+c32isvertspace (char32_t wc)
+{
+  return    wc == 0x000A || wc == 0x000B || wc == 0x000C || wc == 0x000D
+         || wc == 0x2028 || wc == 0x2029;
+}
+
+
+/* c32isblank() is too variable on non GLIBC platforms.
+   E.g., does not include \u3000 ideographic space on musl.
+   E.g., does include non-breaking space on Solaris and NetBSD.
+   This equivalent is more consistent across systems.  */
+ATTRIBUTE_PURE
+static inline bool
+c32issep (char32_t wc)
+{
+#if defined __GLIBC__
+  return !! c32isblank (wc);
+#else
+  return !! (c32isspace (wc) && ! c32isvertspace (wc) && ! c32isnbspace (wc));
+#endif
+}
+
 #include <locale.h>
 
 /* Take care of NLS matters.  */
@@ -261,7 +287,7 @@ readdir_ignoring_dot_and_dotdot (DIR *dirp)
   while (true)
     {
       struct dirent const *dp = readdir (dirp);
-      if (dp == nullptr || ! dot_or_dotdot (dp->d_name))
+      if (dp == NULL || ! dot_or_dotdot (dp->d_name))
         return dp;
     }
 }
@@ -289,7 +315,7 @@ directory_status (int fd_cwd, char const *dir)
     return errno;
 
   dirp = fdopendir (fd);
-  if (dirp == nullptr)
+  if (dirp == NULL)
     {
       saved_errno = errno;
       close (fd);
@@ -315,11 +341,11 @@ enum
 };
 
 #define GETOPT_HELP_OPTION_DECL \
-  "help", no_argument, nullptr, GETOPT_HELP_CHAR
+  "help", no_argument, NULL, GETOPT_HELP_CHAR
 #define GETOPT_VERSION_OPTION_DECL \
-  "version", no_argument, nullptr, GETOPT_VERSION_CHAR
+  "version", no_argument, NULL, GETOPT_VERSION_CHAR
 #define GETOPT_SELINUX_CONTEXT_OPTION_DECL \
-  "context", optional_argument, nullptr, 'Z'
+  "context", optional_argument, NULL, 'Z'
 
 #define case_GETOPT_HELP_CHAR			\
   case GETOPT_HELP_CHAR:			\
@@ -335,9 +361,9 @@ enum
 "for details about the options it supports.\n")
 
 #define HELP_OPTION_DESCRIPTION \
-  _("      --help        display this help and exit\n")
+  _("      --help\n         display this help and exit\n")
 #define VERSION_OPTION_DESCRIPTION \
-  _("      --version     output version information and exit\n")
+  _("      --version\n         output version information and exit\n")
 
 #include "closein.h"
 #include "closeout.h"
@@ -356,7 +382,7 @@ enum
 #define case_GETOPT_VERSION_CHAR(Program_name, Authors)			\
   case GETOPT_VERSION_CHAR:						\
     version_etc (stdout, Program_name, PACKAGE_NAME, Version, Authors,	\
-                 (char *) nullptr);					\
+                 (char *) NULL);					\
     exit (EXIT_SUCCESS);						\
     break;
 
@@ -536,6 +562,167 @@ is_nul (void const *buf, size_t length)
 #define DECIMAL_DIGIT_ACCUMULATE(Accum, Digit_val)			\
   (!ckd_mul (&(Accum), Accum, 10) && !ckd_add (&(Accum), Accum, Digit_val))
 
+
+/* Output --option descriptions;
+   formatted with ANSI format and hyperlink codes.
+   Any postprocessors like help2man etc. are expected to handle this,
+   though it can be disabled in edge cases with the TERM=dumb env var.  */
+
+#define oputs(option) oputs_ (PROGRAM_NAME, option)
+static inline void
+oputs_ (MAYBE_UNUSED char const *program, char const *option)
+{
+  static int help_no_sgr =
+#if ! defined MANUAL_URL && ! defined BOLD_MAN_REFS
+    1;   /* Disable.  */
+#else
+    -1;  /* Lookup.  */
+#endif
+  if (help_no_sgr == -1)
+    {
+      /* Note we don't consult isatty() since usually you
+         would want markup when piping to grep/less etc.  */
+      char const *term = getenv ("TERM");
+      help_no_sgr = (!term || !*term || streq (term, "dumb"));
+    }
+  if (help_no_sgr)
+    {
+      fputs (option, stdout);
+      return;
+    }
+
+  bool double_space = true;
+  char const *first_word = option + strspn (option, " \t\n");
+  char const *option_text = strchr (option, '-');
+  if (!option_text)                    /* for dd(1) option syntax.  */
+    {
+      option_text = first_word;
+      /* Just match first word to support single spaced
+         translated dd "foo=bar description" format.  */
+      double_space = false;
+    }
+  else if (option_text != first_word)  /* for test(1) option syntax.  */
+    {
+      /* Ensure only a single space encountered before '-', to avoid
+         matching within descriptions for translated dd option syntax.  */
+      char const *s = first_word;
+      size_t spaces = 0;
+      while (s < option_text && spaces < 2)
+        spaces += !!isspace (*s++);
+      if (spaces == 2)
+        {
+          /* Probably mismatched dd format.  */
+          option_text = first_word;
+          double_space = false;
+        }
+    }
+
+  size_t anchor_len = strcspn (option_text, ",=[ \n");
+
+  /* Set highlighted text up to spacing after the full option text.
+     Any single space is included in highlighted text,
+     double space or TAB or newline terminates the option text.  */
+  char const *desc_text = option_text + anchor_len;
+  while (*desc_text && *desc_text != '\n')
+    {
+      if (*desc_text == '-' && *(desc_text + 1) == '-')
+        double_space = false;
+      if (isspace (*desc_text))
+        {
+          if (*desc_text == '\t' || isspace (*(desc_text + 1)))
+            break;
+          /* With long options we restrict the match as some translations
+             delimit a long option and description with a single space.  */
+          if (!double_space && *(desc_text + 1) != '-')
+            break;
+        }
+
+      desc_text++;
+    }
+
+  /* write spaces before option text. */
+  fwrite (option, 1, first_word - option, stdout);
+
+  /* write option text.  */
+#ifdef MANUAL_URL
+  char const *url_program =   streq (program, "[") ? "test"
+                            : streq (program, "dir") ? "ls"
+                            : streq (program, "vdir") ? "ls"
+                            : streq (program, "b2sum") ? "cksum"
+                            : streq (program, "md5sum") ? "cksum"
+                            : streq (program, "sha1sum") ? "cksum"
+                            : streq (program, "sha224sum") ? "cksum"
+                            : streq (program, "sha256sum") ? "cksum"
+                            : streq (program, "sha384sum") ? "cksum"
+                            : streq (program, "sha512sum") ? "cksum"
+                            : program;
+  /* Note we don't add the hostname to the links below, because
+     it's unused with http:// links and not usually useful with file:// links.
+     Also there is the possibility that local (hostname agnostic) links
+     would work if remotely accessing a similar system to the local one.  */
+  if (STREQ_LEN (option_text, "--help", 6)
+      || STREQ_LEN (option_text, "--version", 9))
+    {
+      /* We don't have --help and --version links for each command,
+         and they wouldn't be useful to reference anyway.
+         Instead use these to reference the single node manual.  */
+      printf ("\033]8;;%s%s#%s%.*s", PACKAGE_URL,
+              url_program, url_program, (int) anchor_len, option_text);
+    }
+  else
+    {
+      /* The single node manual doesn't work for ls, cksum, md5sum, sha*sum,
+         so we link to the full manual.  */
+      printf ("\033]8;;%s#%s%.*s", MANUAL_URL, url_program,
+              (int) anchor_len, option_text);
+    }
+  fputs ("\033\\", stdout);
+#endif
+#ifdef BOLD_MAN_REFS
+  /* Note help2man strips this and will reinstate with --bold-refs.  */
+  fputs ("\033[1m", stdout);
+#endif
+  /* first_word != option_text for test(1).  */
+  fwrite (first_word, 1, desc_text - first_word, stdout);
+#ifdef BOLD_MAN_REFS
+  fputs ("\033[0m", stdout);
+#endif
+#ifdef MANUAL_URL
+  fputs ("\033]8;;\033\\", stdout);
+#endif
+
+  /* write description.  */
+  fputs (desc_text, stdout);
+}
+
+/* If required and possible,
+   call oputs with printf formatted message.  */
+
+#define oprintf(...) oprintf_ (PROGRAM_NAME, __VA_ARGS__)
+ATTRIBUTE_FORMAT ((printf, 2, 3))
+static inline void
+oprintf_ (char const *program, char const *message, ...)
+{
+  va_list args;
+  char *buf;
+  int buflen = -1;
+
+#if defined MANUAL_URL || defined BOLD_MAN_REFS
+  va_start (args, message);
+  buflen = vasprintf (&buf, message, args);
+  va_end (args);
+#endif
+
+  if (buflen < 0)
+    {
+      vprintf (message, args);
+      return;
+    }
+
+  oputs_ (program, buf);
+  free (buf);
+}
+
 static inline void
 emit_stdin_note (void)
 {
@@ -606,8 +793,10 @@ the VERSION_CONTROL environment variable.  Here are the values:\n\
 "), stdout);
 }
 
+#define emit_symlink_recurse_options(default_opt) \
+ emit_symlink_recurse_options_ (PROGRAM_NAME, default_opt)
 static inline void
-emit_symlink_recurse_options (char const *default_opt)
+emit_symlink_recurse_options_ (char const *program, char const *default_opt)
 {
       printf (_("\
 \n\
@@ -615,13 +804,20 @@ The following options modify how a hierarchy is traversed when the -R\n\
 option is also specified.  If more than one is specified, only the final\n\
 one takes effect. %s is the default.\n\
 \n\
-  -H                     if a command line argument is a symbolic link\n\
-                         to a directory, traverse it\n\
-  -L                     traverse every symbolic link to a directory\n\
-                         encountered\n\
-  -P                     do not traverse any symbolic links\n\
-\n\
 "), default_opt);
+      oputs_ (program, _("\
+  -H\n\
+         if a command line argument is a symlink to a directory, traverse it\n\
+"));
+      oputs_ (program, _("\
+  -L\n\
+         traverse every symbolic link to a directory encountered\n\
+"));
+      oputs_ (program, _("\
+  -P\n\
+         do not traverse any symbolic links\n\
+\n\
+"));
 }
 
 static inline void
@@ -646,7 +842,7 @@ emit_ancillary_info (char const *program)
     { "sha256sum", "sha2 utilities" },
     { "sha384sum", "sha2 utilities" },
     { "sha512sum", "sha2 utilities" },
-    { nullptr, nullptr }
+    { NULL, NULL }
   };
 
   char const *node = program;
@@ -662,7 +858,7 @@ emit_ancillary_info (char const *program)
 
   /* Don't output this redundant message for English locales.
      Note we still output for 'C' so that it gets included in the man page.  */
-  char const *lc_messages = setlocale (LC_MESSAGES, nullptr);
+  char const *lc_messages = setlocale (LC_MESSAGES, NULL);
   if (lc_messages && STRNCMP_LIT (lc_messages, "en_"))
     {
       /* TRANSLATORS: Replace LANG_CODE in this URL with your language code
@@ -764,8 +960,7 @@ write_error (void)
 static inline char *
 stzncpy (char *restrict dest, char const *restrict src, size_t len)
 {
-  size_t i;
-  for (i = 0; i < len && *src; i++)
+  for (size_t i = 0; i < len && *src; i++)
     *dest++ = *src++;
   *dest = 0;
   return dest;

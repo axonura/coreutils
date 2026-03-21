@@ -1,5 +1,5 @@
 /* cut - remove parts of lines of files
-   Copyright (C) 1997-2025 Free Software Foundation, Inc.
+   Copyright (C) 1997-2026 Free Software Foundation, Inc.
    Copyright (C) 1984 David M. Ihnat
 
    This program is free software: you can redistribute it and/or modify
@@ -108,17 +108,17 @@ enum
 
 static struct option const longopts[] =
 {
-  {"bytes", required_argument, nullptr, 'b'},
-  {"characters", required_argument, nullptr, 'c'},
-  {"fields", required_argument, nullptr, 'f'},
-  {"delimiter", required_argument, nullptr, 'd'},
-  {"only-delimited", no_argument, nullptr, 's'},
-  {"output-delimiter", required_argument, nullptr, OUTPUT_DELIMITER_OPTION},
-  {"complement", no_argument, nullptr, COMPLEMENT_OPTION},
-  {"zero-terminated", no_argument, nullptr, 'z'},
+  {"bytes", required_argument, NULL, 'b'},
+  {"characters", required_argument, NULL, 'c'},
+  {"fields", required_argument, NULL, 'f'},
+  {"delimiter", required_argument, NULL, 'd'},
+  {"only-delimited", no_argument, NULL, 's'},
+  {"output-delimiter", required_argument, NULL, OUTPUT_DELIMITER_OPTION},
+  {"complement", no_argument, NULL, COMPLEMENT_OPTION},
+  {"zero-terminated", no_argument, NULL, 'z'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -139,31 +139,46 @@ Print selected parts of lines from each FILE to standard output.\n\
       emit_stdin_note ();
       emit_mandatory_arg_note ();
 
-      fputs (_("\
-  -b, --bytes=LIST        select only these bytes\n\
-  -c, --characters=LIST   select only these characters\n\
-  -d, --delimiter=DELIM   use DELIM instead of TAB for field delimiter\n\
-"), stdout);
-      fputs (_("\
-  -f, --fields=LIST       select only these fields;  also print any line\n\
-                            that contains no delimiter character, unless\n\
-                            the -s option is specified\n\
-  -n                      (ignored)\n\
-"), stdout);
-      fputs (_("\
-      --complement        complement the set of selected bytes, characters\n\
-                            or fields\n\
-"), stdout);
-      fputs (_("\
-  -s, --only-delimited    do not print lines not containing delimiters\n\
-      --output-delimiter=STRING  use STRING as the output delimiter\n\
-                            the default is to use the input delimiter\n\
-"), stdout);
-      fputs (_("\
-  -z, --zero-terminated   line delimiter is NUL, not newline\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -b, --bytes=LIST\n\
+         select only these bytes\n\
+"));
+      oputs (_("\
+  -c, --characters=LIST\n\
+         select only these characters\n\
+"));
+      oputs (_("\
+  -d, --delimiter=DELIM\n\
+         use DELIM instead of TAB for field delimiter\n\
+"));
+      oputs (_("\
+  -f, --fields=LIST\n\
+         select only these fields;  also print any line that contains\n\
+         no delimiter character, unless the -s option is specified\n\
+"));
+      oputs (_("\
+  -n\n\
+         (ignored)\n\
+"));
+      oputs (_("\
+      --complement\n\
+         complement the set of selected bytes, characters or fields\n\
+"));
+      oputs (_("\
+  -s, --only-delimited\n\
+         do not print lines not containing delimiters\n\
+"));
+      oputs (_("\
+      --output-delimiter=STRING\n\
+         use STRING as the output delimiter;\n\
+         the default is to use the input delimiter\n\
+"));
+      oputs (_("\
+  -z, --zero-terminated\n\
+         line delimiter is NUL, not newline\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       fputs (_("\
 \n\
 Use one, and only one of -b, -c or -f.  Each LIST is made up of one\n\
@@ -310,7 +325,7 @@ cut_fields (FILE *stream)
           if (len < 0)
             {
               free (field_1_buffer);
-              field_1_buffer = nullptr;
+              field_1_buffer = NULL;
               if (ferror (stream) || feof (stream))
                 break;
               xalloc_die ();
@@ -450,7 +465,7 @@ cut_file (char const *file, void (*cut_stream) (FILE *))
   else
     {
       stream = fopen (file, "r");
-      if (stream == nullptr)
+      if (stream == NULL)
         {
           error (0, errno, "%s", quotef (file));
           return false;
@@ -483,7 +498,7 @@ main (int argc, char **argv)
   bool ok;
   bool delim_specified = false;
   bool byte_mode = false;
-  char *spec_list_string = nullptr;
+  char *spec_list_string = NULL;
 
   initialize_main (&argc, &argv);
   set_program_name (argv[0]);
@@ -493,13 +508,7 @@ main (int argc, char **argv)
 
   atexit (close_stdout);
 
-  /* By default, all non-delimited lines are printed.  */
-  suppress_non_delimited = false;
-
-  delim = '\0';
-  have_read_stdin = false;
-
-  while ((optc = getopt_long (argc, argv, "b:c:d:f:nsz", longopts, nullptr))
+  while ((optc = getopt_long (argc, argv, "b:c:d:f:nsz", longopts, NULL))
          != -1)
     {
       switch (optc)
@@ -576,7 +585,7 @@ main (int argc, char **argv)
   if (!delim_specified)
     delim = '\t';
 
-  if (output_delimiter_string == nullptr)
+  if (output_delimiter_string == NULL)
     {
       output_delimiter_default[0] = delim;
       output_delimiter_string = output_delimiter_default;

@@ -1,5 +1,5 @@
 /* Exit with a status code indicating success.
-   Copyright (C) 1999-2025 Free Software Foundation, Inc.
+   Copyright (C) 1999-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -44,8 +44,8 @@ Usage: %s [ignored command line arguments]\n\
           _(EXIT_STATUS == EXIT_SUCCESS
             ? N_("Exit with a status code indicating success.")
             : N_("Exit with a status code indicating failure.")));
-  fputs (HELP_OPTION_DESCRIPTION, stdout);
-  fputs (VERSION_OPTION_DESCRIPTION, stdout);
+  oputs (HELP_OPTION_DESCRIPTION);
+  oputs (VERSION_OPTION_DESCRIPTION);
   printf (USAGE_BUILTIN_WARNING, PROGRAM_NAME);
   emit_ancillary_info (PROGRAM_NAME);
   exit (status);
@@ -73,7 +73,7 @@ main (int argc, char **argv)
 
       if (streq (argv[1], "--version"))
         version_etc (stdout, PROGRAM_NAME, PACKAGE_NAME, Version, AUTHORS,
-                     (char *) nullptr);
+                     (char *) NULL);
     }
 
   return EXIT_STATUS;

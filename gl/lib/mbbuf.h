@@ -1,5 +1,5 @@
 /* Buffering for multi-byte characters.
-   Copyright (C) 2025 Free Software Foundation, Inc.
+   Copyright (C) 2025-2026 Free Software Foundation, Inc.
 
    This file is free software: you can redistribute it and/or modify
    it under the terms of the GNU Lesser General Public License as
@@ -96,8 +96,7 @@ mbbuf_get_char (mbbuf_t *mbbuf)
   else
     {
       /* Assume the program will emit the byte, but keep the error flag.  */
-      g.ch = mbbuf->buffer[mbbuf->offset++];
-      g.len = 1;
+      g.ch = (unsigned char) mbbuf->buffer[mbbuf->offset++];
     }
   return g;
 }

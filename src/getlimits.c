@@ -1,5 +1,5 @@
 /* getlimits - print various platform dependent limits.
-   Copyright (C) 2008-2025 Free Software Foundation, Inc.
+   Copyright (C) 2008-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,10 +17,12 @@
 /* Written by Pádraig Brady  */
 
 #include <config.h>             /* sets _FILE_OFFSET_BITS=64 etc. */
+#include <signal.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <float.h>
 
+#include "errno-iter.h"
 #include "ftoastr.h"
 #include "system.h"
 #include "ioblksize.h"
@@ -44,6 +46,22 @@
 
 #ifndef PID_T_MIN
 # define PID_T_MIN TYPE_MINIMUM (pid_t)
+#endif
+
+#ifndef OFF64_T_MAX
+# define OFF64_T_MAX TYPE_MAXIMUM (off64_t)
+#endif
+
+#ifndef OFF64_T_MIN
+# define OFF64_T_MIN TYPE_MINIMUM (off64_t)
+#endif
+
+#ifndef SIGRTMIN
+# define SIGRTMIN 0
+# undef SIGRTMAX
+#endif
+#ifndef SIGRTMAX
+# define SIGRTMAX (SIGRTMIN - 1)
 #endif
 
 /* These are not interesting to print.
@@ -112,6 +130,16 @@ PRINT_FLOATTYPE (print_FLT, float, ftoastr, FLT_BUFSIZE_BOUND)
 PRINT_FLOATTYPE (print_DBL, double, dtoastr, DBL_BUFSIZE_BOUND)
 PRINT_FLOATTYPE (print_LDBL, long double, ldtoastr, LDBL_BUFSIZE_BOUND)
 
+static int
+print_errno (void *name, int e)
+{
+  char const *err_name = name ? name : strerrorname_np (e);
+  if (err_name)
+    printf ("%s=%s\n", err_name,
+            quotearg_style (shell_escape_quoting_style, strerror (e)));
+  return 0;
+}
+
 int
 main (int argc, char **argv)
 {
@@ -128,7 +156,7 @@ main (int argc, char **argv)
 
   parse_gnu_standard_options_only (argc, argv, PROGRAM_NAME, PACKAGE_NAME,
                                    VERSION, true, usage, AUTHORS,
-                                   (char const *) nullptr);
+                                   (char const *) NULL);
 
 #define print_int(TYPE)                                                  \
   sprintf (limit + 1, "%ju", (uintmax_t) TYPE##_MAX);               \
@@ -161,6 +189,7 @@ main (int argc, char **argv)
   print_int (GID_T);
   print_int (PID_T);
   print_int (OFF_T);
+  print_int (OFF64_T);
   print_int (INTMAX);
   print_int (UINTMAX);
 
@@ -170,7 +199,25 @@ main (int argc, char **argv)
   print_float (LDBL);
 
   /* Other useful constants */
+  printf ("SIGRTMIN=%jd\n", (intmax_t) SIGRTMIN);
+  printf ("SIGRTMAX=%jd\n", (intmax_t) SIGRTMAX);
   printf ("IO_BUFSIZE=%ju\n", (uintmax_t) IO_BUFSIZE);
+
+  /* Errnos */
+  errno_iterate (print_errno, NULL);
+  /* Common errno aliases */
+#if defined ENOTEMPTY && ENOTEMPTY == EEXIST
+  print_errno ((char*)"ENOTEMPTY", EEXIST);
+#endif
+#if defined ENOTSUP && ENOTSUP == EOPNOTSUPP
+  print_errno ((char*)"ENOTSUP", EOPNOTSUPP);
+#endif
+#if defined EWOULDBLOCK && EWOULDBLOCK == EAGAIN
+  print_errno ((char*)"EWOULDBLOCK", EAGAIN);
+#endif
+#if defined EDEADLOCK && EDEADLOCK == EDEADLK
+  print_errno ((char*)"EDEADLOCK", EDEADLK);
+#endif
 
   return EXIT_SUCCESS;
 }

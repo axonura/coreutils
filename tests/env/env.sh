@@ -1,7 +1,7 @@
 #!/bin/sh
 # Verify behavior of env.
 
-# Copyright (C) 2009-2025 Free Software Foundation, Inc.
+# Copyright (C) 2009-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -90,6 +90,14 @@ ENV_TEST1=b
 EOF
 compare exp out || fail=1
 
+# env shouldn't care what encoding name or value is
+for nv in 'NON_UTF8_TEST=\240' 'NON_UTF8_TEST\240=1'; do
+  env $(printf "$nv") env > all || fail=1
+  grep '^NON_UTF8_TEST' all | LC_ALL=C sort > out || framework_failure_
+  printf "$nv\\n" > exp || framework_failure_
+  compare exp out || fail=1
+done
+
 # PATH modifications affect exec.
 mkdir unlikely_name || framework_failure_
 cat <<EOF > unlikely_name/also_unlikely || framework_failure_
@@ -164,13 +172,18 @@ got=$(env --chdir=empty pwd) || fail=1
 test "$exp" = "$got" || fail=1
 
 # Verify argv0 overriding
+cat <<EOF > truetrue || framework_failure_
+#!$SHELL
+EOF
+chmod +x truetrue || framework_failure_
 for arg in 'argv0' ''; do
-env -v -a short --argv0=$arg true 2>err || fail=1
+env -v -a short --argv0=$arg ./truetrue 2>err || fail=1
 cat <<EOF >err_exp || framework_failure_
 argv0:     '$arg'
-executing: true
+executing: ./truetrue
    arg[0]= '$arg'
 EOF
+compare err_exp err || fail=1
 done
 
 Exit $fail

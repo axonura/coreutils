@@ -1,5 +1,5 @@
 /* cat -- concatenate files and print on the standard output.
-   Copyright (C) 1988-2025 Free Software Foundation, Inc.
+   Copyright (C) 1988-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -96,23 +96,38 @@ Concatenate FILE(s) to standard output.\n\
 
       emit_stdin_note ();
 
-      fputs (_("\
-\n\
+      oputs (_("\
   -A, --show-all           equivalent to -vET\n\
+"));
+      oputs (_("\
   -b, --number-nonblank    number nonempty output lines, overrides -n\n\
+"));
+      oputs (_("\
   -e                       equivalent to -vE\n\
-  -E, --show-ends          display $ at end of each line\n\
+"));
+      oputs (_("\
+  -E, --show-ends          display $ or ^M$ at end of each line\n\
+"));
+      oputs (_("\
   -n, --number             number all output lines\n\
+"));
+      oputs (_("\
   -s, --squeeze-blank      suppress repeated empty output lines\n\
-"), stdout);
-      fputs (_("\
+"));
+      oputs (_("\
   -t                       equivalent to -vT\n\
+"));
+      oputs (_("\
   -T, --show-tabs          display TAB characters as ^I\n\
+"));
+      oputs (_("\
   -u                       (ignored)\n\
+"));
+      oputs (_("\
   -v, --show-nonprinting   use ^ and M- notation, except for LFD and TAB\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       printf (_("\
 \n\
 Examples:\n\
@@ -514,7 +529,7 @@ copy_cat (void)
      unsupported or the input file seems empty.  */
 
   for (bool some_copied = false; ; some_copied = true)
-    switch (copy_file_range (input_desc, nullptr, STDOUT_FILENO, nullptr,
+    switch (copy_file_range (input_desc, NULL, STDOUT_FILENO, NULL,
                              copy_max, 0))
       {
       case 0:
@@ -523,7 +538,7 @@ copy_cat (void)
       case -1:
         if (errno == ENOSYS || is_ENOTSUP (errno) || errno == EINVAL
             || errno == EBADF || errno == EXDEV || errno == ETXTBSY
-            || errno == EPERM)
+            || errno == EPERM || errno == EFBIG)
           return 0;
         error (0, errno, "%s", quotef (infile));
         return -1;
@@ -537,7 +552,7 @@ main (int argc, char **argv)
   /* Nonzero if we have ever read standard input.  */
   bool have_read_stdin = false;
 
-  struct stat stat_buf;
+  struct stat ostat_buf;
 
   /* Variables that are set according to the specified options.  */
   bool number = false;
@@ -550,16 +565,16 @@ main (int argc, char **argv)
 
   static struct option const long_options[] =
   {
-    {"number-nonblank", no_argument, nullptr, 'b'},
-    {"number", no_argument, nullptr, 'n'},
-    {"squeeze-blank", no_argument, nullptr, 's'},
-    {"show-nonprinting", no_argument, nullptr, 'v'},
-    {"show-ends", no_argument, nullptr, 'E'},
-    {"show-tabs", no_argument, nullptr, 'T'},
-    {"show-all", no_argument, nullptr, 'A'},
+    {"number-nonblank", no_argument, NULL, 'b'},
+    {"number", no_argument, NULL, 'n'},
+    {"squeeze-blank", no_argument, NULL, 's'},
+    {"show-nonprinting", no_argument, NULL, 'v'},
+    {"show-ends", no_argument, NULL, 'E'},
+    {"show-tabs", no_argument, NULL, 'T'},
+    {"show-all", no_argument, NULL, 'A'},
     {GETOPT_HELP_OPTION_DECL},
     {GETOPT_VERSION_OPTION_DECL},
-    {nullptr, 0, nullptr, 0}
+    {NULL, 0, NULL, 0}
   };
 
   initialize_main (&argc, &argv);
@@ -577,7 +592,7 @@ main (int argc, char **argv)
   /* Parse command line options.  */
 
   int c;
-  while ((c = getopt_long (argc, argv, "benstuvAET", long_options, nullptr))
+  while ((c = getopt_long (argc, argv, "benstuvAET", long_options, NULL))
          != -1)
     {
       switch (c)
@@ -638,28 +653,17 @@ main (int argc, char **argv)
 
   /* Get device, i-node number, and optimal blocksize of output.  */
 
-  if (fstat (STDOUT_FILENO, &stat_buf) < 0)
+  if (fstat (STDOUT_FILENO, &ostat_buf) < 0)
     error (EXIT_FAILURE, errno, _("standard output"));
 
   /* Optimal size of i/o operations of output.  */
-  idx_t outsize = io_blksize (&stat_buf);
+  idx_t outsize = io_blksize (&ostat_buf);
 
   /* Device, I-node number and lazily-acquired flags of the output.  */
-  struct
-  {
-    dev_t st_dev;
-    ino_t st_ino;
-  } out_id;
   int out_flags = -2;
-  bool have_out_dev = ! (S_TYPEISSHM (&stat_buf) || S_TYPEISTMO (&stat_buf));
-  if (have_out_dev)
-    {
-      out_id.st_dev = stat_buf.st_dev;
-      out_id.st_ino = stat_buf.st_ino;
-   }
 
   /* True if the output is a regular file.  */
-  bool out_isreg = S_ISREG (stat_buf.st_mode) != 0;
+  bool out_isreg = S_ISREG (ostat_buf.st_mode) != 0;
 
   if (! (number || show_ends || squeeze_blank))
     {
@@ -698,7 +702,8 @@ main (int argc, char **argv)
             }
         }
 
-      if (fstat (input_desc, &stat_buf) < 0)
+      struct stat istat_buf;
+      if (fstat (input_desc, &istat_buf) < 0)
         {
           error (0, errno, "%s", quotef (infile));
           ok = false;
@@ -706,7 +711,7 @@ main (int argc, char **argv)
         }
 
       /* Optimal size of i/o operations of input.  */
-      idx_t insize = io_blksize (&stat_buf);
+      idx_t insize = io_blksize (&istat_buf);
 
       fdadvise (input_desc, 0, 0, FADVISE_SEQUENTIAL);
 
@@ -714,10 +719,10 @@ main (int argc, char **argv)
          output device.  It's better to catch this error earlier
          rather than later.  */
 
-      if (! (S_ISFIFO (stat_buf.st_mode) || S_ISSOCK (stat_buf.st_mode)
-             || S_TYPEISSHM (&stat_buf) || S_TYPEISTMO (&stat_buf))
-          && have_out_dev
-          && SAME_INODE (stat_buf, out_id))
+      if (! (S_ISFIFO (istat_buf.st_mode) || S_ISSOCK (istat_buf.st_mode)
+             || S_TYPEISSHM (&istat_buf) || S_TYPEISTMO (&istat_buf))
+          && ! (S_TYPEISSHM (&ostat_buf) || S_TYPEISTMO (&ostat_buf))
+          && SAME_INODE (istat_buf, ostat_buf))
         {
           off_t in_pos = lseek (input_desc, 0, SEEK_CUR);
           if (0 <= in_pos)
@@ -747,10 +752,10 @@ main (int argc, char **argv)
              || show_tabs || squeeze_blank))
         {
           int copy_cat_status =
-            out_isreg && S_ISREG (stat_buf.st_mode) ? copy_cat () : 0;
+            out_isreg && S_ISREG (istat_buf.st_mode) ? copy_cat () : 0;
           if (copy_cat_status != 0)
             {
-              inbuf = nullptr;
+              inbuf = NULL;
               ok &= 0 < copy_cat_status;
             }
           else

@@ -1,7 +1,7 @@
 # Make coreutils programs.                             -*-Makefile-*-
 # This is included by the top-level Makefile.am.
 
-## Copyright (C) 1990-2025 Free Software Foundation, Inc.
+## Copyright (C) 1990-2026 Free Software Foundation, Inc.
 
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@ include $(srcdir)/src/cu-progs.mk
 EXTRA_PROGRAMS = \
    $(no_install__progs) \
    $(build_if_possible__progs) \
+   $(build_if_appropriate__progs) \
    $(default__progs)
 
 # The user can tweak these lists at configure time.
@@ -39,6 +40,7 @@ noinst_PROGRAMS =		\
   src/getlimits
 
 noinst_HEADERS =		\
+  src/cksum.h			\
   src/chown.h			\
   src/chown-core.h		\
   src/copy.h			\
@@ -62,6 +64,7 @@ noinst_HEADERS =		\
   src/statx.h			\
   src/system.h			\
   src/temp-stream.h		\
+  src/term-sig.h		\
   src/uname.h			\
   src/wc.h
 
@@ -100,7 +103,7 @@ remove_ldadd =
 # replacement functions defined in libcoreutils.a.
 # Similarly for $(MBRTOWC_LIB).
 LDADD = src/libver.a lib/libcoreutils.a $(LIBINTL) $(MBRTOWC_LIB) \
-  $(INTL_MACOSX_LIBS) lib/libcoreutils.a
+  lib/libcoreutils.a
 
 # First, list all programs, to make listing per-program libraries easier.
 # See [ below.
@@ -153,7 +156,7 @@ src_ln_LDADD = $(LDADD)
 src_logname_LDADD = $(LDADD)
 src_ls_LDADD = $(LDADD)
 
-src_md5sum_LDADD = $(LDADD)
+# See src_md5sum_LDADD below
 src_mkdir_LDADD = $(LDADD)
 src_mkfifo_LDADD = $(LDADD)
 src_mknod_LDADD = $(LDADD)
@@ -178,11 +181,12 @@ src_rm_LDADD = $(LDADD)
 src_rmdir_LDADD = $(LDADD)
 src_runcon_LDADD = $(LDADD)
 src_seq_LDADD = $(LDADD)
-src_sha1sum_LDADD = $(LDADD)
-src_sha224sum_LDADD = $(LDADD)
-src_sha256sum_LDADD = $(LDADD)
-src_sha384sum_LDADD = $(LDADD)
-src_sha512sum_LDADD = $(LDADD)
+# See src_md5sum_LDADD below
+# See src_sha1sum_LDADD below
+# See src_sha224sum_LDADD below
+# See src_sha256sum_LDADD below
+# See src_sha384sum_LDADD below
+# See src_sha512sum_LDADD below
 src_shred_LDADD = $(LDADD)
 src_shuf_LDADD = $(LDADD)
 src_sleep_LDADD = $(LDADD)
@@ -221,6 +225,12 @@ src___LDADD = $(src_test_LDADD)
 src_dir_LDADD = $(src_ls_LDADD)
 src_vdir_LDADD = $(src_ls_LDADD)
 src_chgrp_LDADD = $(src_chown_LDADD)
+src_md5sum_LDADD = $(src_cksum_LDADD)
+src_sha1sum_LDADD = $(src_cksum_LDADD)
+src_sha224sum_LDADD = $(src_cksum_LDADD)
+src_sha256sum_LDADD = $(src_cksum_LDADD)
+src_sha384sum_LDADD = $(src_cksum_LDADD)
+src_sha512sum_LDADD = $(src_cksum_LDADD)
 
 src_cp_LDADD += $(copy_ldadd)
 src_ginstall_LDADD += $(copy_ldadd)
@@ -272,6 +282,7 @@ src_touch_LDADD += $(CLOCK_TIME_LIB)
 
 # for gethrxtime
 src_dd_LDADD += $(GETHRXTIME_LIB)
+src_shred_LDADD += $(GETHRXTIME_LIB)
 
 # for cap_get_file
 src_ls_LDADD += $(LIB_CAP)
@@ -419,55 +430,55 @@ src_tac_SOURCES = src/tac.c src/temp-stream.c
 src_tail_SOURCES = src/tail.c src/iopoll.c
 src_tee_SOURCES = src/tee.c src/iopoll.c
 
-src_sum_SOURCES = src/sum.c src/sum.h src/digest.c
+src_sum_SOURCES = src/sum.c src/sum.h src/cksum.c
 src_sum_CPPFLAGS = -DHASH_ALGO_SUM=1 $(AM_CPPFLAGS)
 
-src_md5sum_SOURCES = src/digest.c
+src_md5sum_SOURCES = src/cksum.c
 src_md5sum_CPPFLAGS = -DHASH_ALGO_MD5=1 $(AM_CPPFLAGS)
-src_sha1sum_SOURCES = src/digest.c
+src_sha1sum_SOURCES = src/cksum.c
 src_sha1sum_CPPFLAGS = -DHASH_ALGO_SHA1=1 $(AM_CPPFLAGS)
-src_sha224sum_SOURCES = src/digest.c
+src_sha224sum_SOURCES = src/cksum.c
 src_sha224sum_CPPFLAGS = -DHASH_ALGO_SHA224=1 $(AM_CPPFLAGS)
-src_sha256sum_SOURCES = src/digest.c
+src_sha256sum_SOURCES = src/cksum.c
 src_sha256sum_CPPFLAGS = -DHASH_ALGO_SHA256=1 $(AM_CPPFLAGS)
-src_sha384sum_SOURCES = src/digest.c
+src_sha384sum_SOURCES = src/cksum.c
 src_sha384sum_CPPFLAGS = -DHASH_ALGO_SHA384=1 $(AM_CPPFLAGS)
-src_sha512sum_SOURCES = src/digest.c
+src_sha512sum_SOURCES = src/cksum.c
 src_sha512sum_CPPFLAGS = -DHASH_ALGO_SHA512=1 $(AM_CPPFLAGS)
 src_b2sum_CPPFLAGS = -DHASH_ALGO_BLAKE2=1 -DHAVE_CONFIG_H $(AM_CPPFLAGS)
-src_b2sum_SOURCES = src/digest.c \
+src_b2sum_SOURCES = src/cksum.c \
 		    src/blake2/blake2.h src/blake2/blake2-impl.h \
 		    src/blake2/blake2b-ref.c \
 		    src/blake2/b2sum.c src/blake2/b2sum.h
 
 src_cksum_SOURCES = $(src_b2sum_SOURCES) src/sum.c src/sum.h \
-		    src/cksum.c src/cksum.h src/crctab.c
+		    src/cksum_crc.c src/cksum_crc.h src/crctab.c
 src_cksum_CPPFLAGS = -DHASH_ALGO_CKSUM=1 -DHAVE_CONFIG_H $(AM_CPPFLAGS)
 
 if USE_AVX512_CRC32
 noinst_LIBRARIES += src/libcksum_avx512.a
-src_libcksum_avx512_a_SOURCES = src/cksum_avx512.c src/cksum.h
+src_libcksum_avx512_a_SOURCES = src/cksum_avx512.c src/cksum_crc.h
 cksum_avx512_ldadd = src/libcksum_avx512.a
 src_cksum_LDADD += $(cksum_avx512_ldadd)
 src_libcksum_avx512_a_CFLAGS = -mavx512bw -mavx512f -mvpclmulqdq $(AM_CFLAGS)
 endif
 if USE_AVX2_CRC32
 noinst_LIBRARIES += src/libcksum_avx2.a
-src_libcksum_avx2_a_SOURCES = src/cksum_avx2.c src/cksum.h
+src_libcksum_avx2_a_SOURCES = src/cksum_avx2.c src/cksum_crc.h
 cksum_avx2_ldadd = src/libcksum_avx2.a
 src_cksum_LDADD += $(cksum_avx2_ldadd)
 src_libcksum_avx2_a_CFLAGS = -mpclmul -mavx -mavx2 -mvpclmulqdq $(AM_CFLAGS)
 endif
 if USE_PCLMUL_CRC32
 noinst_LIBRARIES += src/libcksum_pclmul.a
-src_libcksum_pclmul_a_SOURCES = src/cksum_pclmul.c src/cksum.h
+src_libcksum_pclmul_a_SOURCES = src/cksum_pclmul.c src/cksum_crc.h
 cksum_pclmul_ldadd = src/libcksum_pclmul.a
 src_cksum_LDADD += $(cksum_pclmul_ldadd)
 src_libcksum_pclmul_a_CFLAGS = -mavx -mpclmul $(AM_CFLAGS)
 endif
 if USE_VMULL_CRC32
 noinst_LIBRARIES += src/libcksum_vmull.a
-src_libcksum_vmull_a_SOURCES = src/cksum_vmull.c src/cksum.h
+src_libcksum_vmull_a_SOURCES = src/cksum_vmull.c src/cksum_crc.h
 cksum_vmull_ldadd = src/libcksum_vmull.a
 src_cksum_LDADD += $(cksum_vmull_ldadd)
 src_libcksum_vmull_a_CFLAGS = -march=armv8-a+crypto $(AM_CFLAGS)
@@ -498,6 +509,13 @@ wc_avx2_ldadd = src/libwc_avx2.a
 src_wc_LDADD += $(wc_avx2_ldadd)
 src_libwc_avx2_a_CFLAGS = -mavx2 $(AM_CFLAGS)
 endif
+if USE_NEON_WC_LINECOUNT
+noinst_LIBRARIES += src/libwc_neon.a
+src_libwc_neon_a_SOURCES = src/wc_neon.c
+wc_neon_ldadd = src/libwc_neon.a
+src_wc_LDADD += $(wc_neon_ldadd)
+src_libwc_neon_a_CFLAGS = -march=armv8-a+simd $(AM_CFLAGS)
+endif
 
 # Ensure we don't link against libcoreutils.a as that lib is
 # not compiled with -fPIC which causes issues on 64 bit at least
@@ -519,10 +537,22 @@ EXTRA_src_coreutils_DEPENDENCIES = $(single_binary_deps)
 
 include $(top_srcdir)/src/single-binary.mk
 
-# Creates symlinks or shebangs to the installed programs when building
-# coreutils single binary.
+# Creates symlinks, or shebangs to the installed programs
+# _before_ building coreutils single binary.
+if !SINGLE_BINARY_HARD
 EXTRA_src_coreutils_DEPENDENCIES += src/coreutils_$(single_binary_install_type)
+endif
 endif SINGLE_BINARY
+
+# Creates hardlinks _after_ building the coreutils single binary.
+CLEANFILES += src/coreutils_hardlinks
+src/coreutils_hardlinks: src/coreutils$(EXEEXT)
+	$(AM_V_GEN)touch $@
+	$(AM_V_at)for i in x $(single_binary_progs); do \
+		test $$i = x && continue; \
+		rm -f src/$$i$(EXEEXT) || exit $$?; \
+		ln src/coreutils$(EXEEXT) src/$$i$(EXEEXT) || exit $$?; \
+	done
 
 CLEANFILES += src/coreutils_symlinks
 src/coreutils_symlinks: Makefile
@@ -588,13 +618,13 @@ $(top_srcdir)/src/primes.h: $(top_srcdir)/src/make-prime-list.c
 
 # We build crctab in a similar manner to primes.h.
 BUILT_SOURCES += $(top_srcdir)/src/crctab.c
-$(top_srcdir)/src/crctab.c: $(top_srcdir)/src/cksum.c
+$(top_srcdir)/src/crctab.c: $(top_srcdir)/src/cksum_crc.c
 	$(AM_V_GEN)if test -n '$(BUILD_CC)'; then \
 	  $(MKDIR_P) $(top_srcdir)/src/crctab-tmp \
 	  && (cd $(top_srcdir)/src/crctab-tmp \
 	      && $(BUILD_CC) $(BUILD_CPPFLAGS) $(BUILD_CFLAGS) \
 		$(BUILD_LDFLAGS) -DCRCTAB -o crctab$(EXEEXT) \
-		$(abs_top_srcdir)/src/cksum.c) \
+		$(abs_top_srcdir)/src/cksum_crc.c) \
 	  && rm -f $@ $@-t \
 	  && $(top_srcdir)/src/crctab-tmp/crctab$(EXEEXT) > $@-t \
 	  && chmod a-w $@-t \

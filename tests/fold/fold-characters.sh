@@ -1,7 +1,7 @@
 #!/bin/sh
 # Test fold --characters.
 
-# Copyright (C) 2025 Free Software Foundation, Inc.
+# Copyright (C) 2025-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -83,14 +83,11 @@ env printf '\naaaa\n' >> exp3 || framework_failure_
 fold --characters input3 | tail -n 4 > out3 || fail=1
 compare exp3 out3 || fail=1
 
-# Sequence derived from <https://datatracker.ietf.org/doc/rfc9839>.
-bad_unicode ()
-{
-  # invalid UTF8|unpaired surrogate|NUL|C1 control|noncharacter
-  env printf '\xC3|\xED\xBA\xAD|\u0000|\u0089|\xED\xA6\xBF\xED\xBF\xBF\n'
-}
-bad_unicode > /dev/null || framework_failure_
-test $({ bad_unicode | fold; bad_unicode; } | uniq | wc -l) = 1 || fail=1
+bad_unicode_with_nul () { env printf '%s|\u0000\n' "$(bad_unicode)"; }
+bad_unicode_with_nul > exp4 || framework_failure_
+bad_unicode_with_nul | fold > out4 || fail=1
+compare exp4 out4 || fail=1
+
 # Check bad character at EOF
 test $(env printf '\xC3' | fold | wc -c) = 1 || fail=1
 

@@ -1,6 +1,6 @@
 /* uname -- print system information
 
-   Copyright (C) 1989-2025 Free Software Foundation, Inc.
+   Copyright (C) 1989-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -81,27 +81,27 @@
 
 static struct option const uname_long_options[] =
 {
-  {"all", no_argument, nullptr, 'a'},
-  {"kernel-name", no_argument, nullptr, 's'},
-  {"sysname", no_argument, nullptr, 's'},	/* Obsolescent.  */
-  {"nodename", no_argument, nullptr, 'n'},
-  {"kernel-release", no_argument, nullptr, 'r'},
-  {"release", no_argument, nullptr, 'r'},  /* Obsolescent.  */
-  {"kernel-version", no_argument, nullptr, 'v'},
-  {"machine", no_argument, nullptr, 'm'},
-  {"processor", no_argument, nullptr, 'p'},
-  {"hardware-platform", no_argument, nullptr, 'i'},
-  {"operating-system", no_argument, nullptr, 'o'},
+  {"all", no_argument, NULL, 'a'},
+  {"kernel-name", no_argument, NULL, 's'},
+  {"sysname", no_argument, NULL, 's'},	/* Obsolescent.  */
+  {"nodename", no_argument, NULL, 'n'},
+  {"kernel-release", no_argument, NULL, 'r'},
+  {"release", no_argument, NULL, 'r'},  /* Obsolescent.  */
+  {"kernel-version", no_argument, NULL, 'v'},
+  {"machine", no_argument, NULL, 'm'},
+  {"processor", no_argument, NULL, 'p'},
+  {"hardware-platform", no_argument, NULL, 'i'},
+  {"operating-system", no_argument, NULL, 'o'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 static struct option const arch_long_options[] =
 {
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -118,19 +118,35 @@ usage (int status)
           fputs (_("\
 Print certain system information.  With no OPTION, same as -s.\n\
 \n\
+"), stdout);
+          oputs (_("\
   -a, --all                print all information, in the following order,\n\
-                             except omit -p and -i if unknown:\n\
+                             except omit -p and -i if unknown\n\
+"));
+          oputs (_("\
   -s, --kernel-name        print the kernel name\n\
+"));
+          oputs (_("\
   -n, --nodename           print the network node hostname\n\
+"));
+          oputs (_("\
   -r, --kernel-release     print the kernel release\n\
-"), stdout);
-          fputs (_("\
+"));
+          oputs (_("\
   -v, --kernel-version     print the kernel version\n\
+"));
+          oputs (_("\
   -m, --machine            print the machine hardware name\n\
+"));
+          oputs (_("\
   -p, --processor          print the processor type (non-portable)\n\
+"));
+          oputs (_("\
   -i, --hardware-platform  print the hardware platform (non-portable)\n\
+"));
+          oputs (_("\
   -o, --operating-system   print the operating system\n\
-"), stdout);
+"));
         }
       else
         {
@@ -140,8 +156,8 @@ Print machine architecture.\n\
 "), stdout);
         }
 
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       emit_ancillary_info (PROGRAM_NAME);
     }
   exit (status);
@@ -191,7 +207,7 @@ decode_switches (int argc, char **argv)
   if (uname_mode == UNAME_ARCH)
     {
       while ((c = getopt_long (argc, argv, "",
-                               arch_long_options, nullptr))
+                               arch_long_options, NULL))
              != -1)
         {
           switch (c)
@@ -209,7 +225,7 @@ decode_switches (int argc, char **argv)
   else
     {
       while ((c = getopt_long (argc, argv, "asnrvmpio",
-                               uname_long_options, nullptr))
+                               uname_long_options, NULL))
              != -1)
         {
           switch (c)

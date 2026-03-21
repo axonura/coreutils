@@ -1,5 +1,5 @@
 /* seq - print sequence of numbers to standard output.
-   Copyright (C) 1994-2025 Free Software Foundation, Inc.
+   Copyright (C) 1994-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,7 +17,6 @@
 /* Written by Ulrich Drepper.  */
 
 #include <config.h>
-#include <ctype.h>
 #include <getopt.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -28,6 +27,7 @@
 #include "full-write.h"
 #include "quote.h"
 #include "xstrtod.h"
+#include "xvasprintf.h"
 
 /* Roll our own isfinite/isnan rather than using <math.h>, so that we don't
    have to worry about linking -lm just for isfinite.  */
@@ -55,7 +55,7 @@ static bool locale_ok;
 static bool equal_width;
 
 /* The string used to separate two numbers.  */
-static char const *separator;
+static char const *separator = "\n";
 
 /* The string output after all numbers have been output.
    Usually "\n" or "\0".  */
@@ -63,12 +63,12 @@ static char const terminator[] = "\n";
 
 static struct option const long_options[] =
 {
-  { "equal-width", no_argument, nullptr, 'w'},
-  { "format", required_argument, nullptr, 'f'},
-  { "separator", required_argument, nullptr, 's'},
+  { "equal-width", no_argument, NULL, 'w'},
+  { "format", required_argument, NULL, 'f'},
+  { "separator", required_argument, NULL, 's'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  { nullptr, 0, nullptr, 0}
+  { NULL, 0, NULL, 0}
 };
 
 void
@@ -89,13 +89,20 @@ Print numbers from FIRST to LAST, in steps of INCREMENT.\n\
 
       emit_mandatory_arg_note ();
 
-      fputs (_("\
-  -f, --format=FORMAT      use printf style floating-point FORMAT\n\
-  -s, --separator=STRING   use STRING to separate numbers (default: \\n)\n\
-  -w, --equal-width        equalize width by padding with leading zeroes\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -f, --format=FORMAT\n\
+         use printf style floating-point FORMAT\n\
+"));
+      oputs (_("\
+  -s, --separator=STRING\n\
+         use STRING to separate numbers (default: \\n)\n\
+"));
+      oputs (_("\
+  -w, --equal-width\n\
+         equalize width by padding with leading zeroes\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       fputs (_("\
 \n\
 If FIRST or INCREMENT is omitted, it defaults to 1.  That is, an\n\
@@ -151,7 +158,7 @@ scan_arg (char const *arg)
 {
   operand ret;
 
-  if (! xstrtold (arg, nullptr, &ret.value, cl_strtold))
+  if (! xstrtold (arg, NULL, &ret.value, cl_strtold))
     {
       error (0, 0, _("invalid floating point argument: %s"), quote (arg));
       usage (EXIT_FAILURE);
@@ -198,7 +205,7 @@ scan_arg (char const *arg)
         e = strchr (arg, 'E');
       if (e)
         {
-          long exponent = MAX (strtol (e + 1, nullptr, 10), -LONG_MAX);
+          long exponent = MAX (strtol (e + 1, NULL, 10), -LONG_MAX);
           ret.precision += exponent < 0 ? -exponent
                                         : - MIN (ret.precision, exponent);
           /* Don't account for e.... in the width since this is not output.  */
@@ -238,9 +245,6 @@ long_double_format (char const *fmt, struct layout *layout)
 {
   size_t i;
   size_t prefix_len = 0;
-  size_t suffix_len = 0;
-  size_t length_modifier_offset;
-  bool has_L;
 
   for (i = 0; ! (fmt[i] == '%' && fmt[i + 1] != '%'); i += (fmt[i] == '%') + 1)
     {
@@ -259,8 +263,8 @@ long_double_format (char const *fmt, struct layout *layout)
       i += strspn (fmt + i, "0123456789");
     }
 
-  length_modifier_offset = i;
-  has_L = (fmt[i] == 'L');
+  size_t length_modifier_offset = i;
+  bool has_L = (fmt[i] == 'L');
   i += has_L;
   if (fmt[i] == '\0')
     error (EXIT_FAILURE, 0, _("format %s ends in %%"), quote (fmt));
@@ -268,6 +272,7 @@ long_double_format (char const *fmt, struct layout *layout)
     error (EXIT_FAILURE, 0,
            _("format %s has unknown %%%c directive"), quote (fmt), fmt[i]);
 
+  size_t suffix_len = 0;
   for (i++; ; i += (fmt[i] == '%') + 1)
     if (fmt[i] == '%' && fmt[i + 1] != '%')
       error (EXIT_FAILURE, 0, _("format %s has too many %% directives"),
@@ -300,9 +305,8 @@ print_numbers (char const *fmt, struct layout layout,
   if (! out_of_range)
     {
       long double x = first;
-      long double i;
 
-      for (i = 1; ; i++)
+      for (long double i = 1; ; i++)
         {
           long double x0 = x;
           if (printf (fmt, x) < 0)
@@ -326,23 +330,22 @@ print_numbers (char const *fmt, struct layout layout,
                  of stopping at 0.000002.  */
 
               bool print_extra_number = false;
-              long double x_val;
-              char *x_str;
-              int x_strlen;
               if (locale_ok)
                 setlocale (LC_NUMERIC, "C");
-              x_strlen = asprintf (&x_str, fmt, x);
+              char *x_str;
+              int x_strlen = asprintf (&x_str, fmt, x);
               if (locale_ok)
                 setlocale (LC_NUMERIC, "");
               if (x_strlen < 0)
                 xalloc_die ();
               x_str[x_strlen - layout.suffix_len] = '\0';
 
-              if (xstrtold (x_str + layout.prefix_len, nullptr,
+              long double x_val;
+              if (xstrtold (x_str + layout.prefix_len, NULL,
                             &x_val, cl_strtold)
                   && x_val == last)
                 {
-                  char *x0_str = nullptr;
+                  char *x0_str = NULL;
                   int x0_strlen = asprintf (&x0_str, fmt, x0);
                   if (x0_strlen < 0)
                     xalloc_die ();
@@ -508,7 +511,7 @@ seq_fast (char const *a, char const *b, uintmax_t step)
       /* Grow number buffer if needed for the inf case.  */
       if (p == p0)
         {
-          char *new_p0 = xpalloc (nullptr, &inc_size, 1, -1, 1);
+          char *new_p0 = xpalloc (NULL, &inc_size, 1, -1, 1);
           idx_t saved_p_len = endp - p;
           endp = new_p0 + inc_size;
           p = memcpy (endp - saved_p_len, p0, saved_p_len);
@@ -546,14 +549,8 @@ all_digits_p (char const *s)
 int
 main (int argc, char **argv)
 {
-  int optc;
-  operand first = { 1, 1, 0 };
-  operand step = { 1, 1, 0 };
-  operand last;
-  struct layout layout = { 0, 0 };
-
   /* The printf(3) format used for output.  */
-  char const *format_str = nullptr;
+  char const *format_str = NULL;
 
   initialize_main (&argc, &argv);
   set_program_name (argv[0]);
@@ -563,14 +560,12 @@ main (int argc, char **argv)
 
   atexit (close_stdout);
 
-  equal_width = false;
-  separator = "\n";
-
   /* We have to handle negative numbers in the command line but this
      conflicts with the command line arguments.  So explicitly check first
      whether the next argument looks like a negative number.  */
   while (optind < argc)
     {
+      int optc;
       if (argv[optind][0] == '-'
           && ((optc = argv[optind][1]) == '.' || c_isdigit (optc)))
         {
@@ -578,7 +573,7 @@ main (int argc, char **argv)
           break;
         }
 
-      optc = getopt_long (argc, argv, "+f:s:w", long_options, nullptr);
+      optc = getopt_long (argc, argv, "+f:s:w", long_options, NULL);
       if (optc == -1)
         break;
 
@@ -618,10 +613,11 @@ main (int argc, char **argv)
       usage (EXIT_FAILURE);
     }
 
+  struct layout layout = { 0, 0 };
   if (format_str)
     format_str = long_double_format (format_str, &layout);
 
-  if (format_str != nullptr && equal_width)
+  if (format_str != NULL && equal_width)
     {
       error (0, 0, _("format string may not be specified"
                      " when printing equal width strings"));
@@ -637,10 +633,11 @@ main (int argc, char **argv)
      - integer increment <= SEQ_FAST_STEP_LIMIT
      then use the much more efficient integer-only code,
      operating on arbitrarily large numbers.  */
+  operand step = { 1, 1, 0 };
   bool fast_step_ok = false;
   if (n_args != 3
       || (all_digits_p (argv[optind + 1])
-          && xstrtold (argv[optind + 1], nullptr, &step.value, cl_strtold)
+          && xstrtold (argv[optind + 1], NULL, &step.value, cl_strtold)
           && 0 < step.value && step.value <= SEQ_FAST_STEP_LIMIT))
     fast_step_ok = true;
 
@@ -655,7 +652,8 @@ main (int argc, char **argv)
       seq_fast (s1, s2, step.value);
     }
 
-  last = scan_arg (argv[optind++]);
+  operand first = { 1, 1, 0 };
+  operand last = scan_arg (argv[optind++]);
 
   if (optind < argc)
     {
@@ -683,16 +681,11 @@ main (int argc, char **argv)
       && 0 < step.value && step.value <= SEQ_FAST_STEP_LIMIT
       && !equal_width && !format_str && strlen (separator) == 1)
     {
-      char *s1;
-      char *s2;
-      if (all_digits_p (user_start))
-        s1 = xstrdup (user_start);
-      else if (asprintf (&s1, "%0.Lf", first.value) < 0)
-        xalloc_die ();
-      if (! isfinite (last.value))
-        s2 = xstrdup ("inf"); /* Ensure "inf" is used.  */
-      else if (asprintf (&s2, "%0.Lf", last.value) < 0)
-        xalloc_die ();
+      char *s1 = (all_digits_p (user_start)
+                  ? xstrdup (user_start) : xasprintf ("%0.Lf", first.value));
+      /* Ensure "inf" is used.  */
+      char *s2 = (! isfinite (last.value)
+                  ? xstrdup ("inf") : xasprintf ("%0.Lf", last.value));
 
       if (*s1 != '-' && *s2 != '-')
         seq_fast (s1, s2, step.value);
@@ -702,7 +695,7 @@ main (int argc, char **argv)
       /* Upon any failure, let the more general code deal with it.  */
     }
 
-  if (format_str == nullptr)
+  if (format_str == NULL)
     format_str = get_default_format (first, step, last);
 
   print_numbers (format_str, layout, first.value, step.value, last.value);

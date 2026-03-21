@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 # Test "cut".
 
-# Copyright (C) 2006-2025 Free Software Foundation, Inc.
+# Copyright (C) 2006-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -160,6 +160,9 @@ my @Tests =
   ['newline-22', "-d'\n'", '-f1-', {IN=>"\nb"}, {OUT=>"\nb\n"}],
   ['newline-23', "-d'\n'", '-f1-', '--ou=:', {IN=>"a\nb\n"}, {OUT=>"a:b\n"}],
   ['newline-24', "-d'\n'", '-f1,2', '--ou=:', {IN=>"a\nb\n"}, {OUT=>"a:b\n"}],
+
+  # input without delimiter and -s flag
+  ['newline-25', '-s', "-d'\n'", '-f1', {IN=>"abc"}, {OUT=>""}],
 
   # --zero-terminated
   ['zerot-1', "-z", '-c1', {IN=>"ab\0cd\0"}, {OUT=>"a\0c\0"}],

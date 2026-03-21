@@ -1,6 +1,6 @@
 /* shred.c - overwrite files and devices to make it harder to recover data
 
-   Copyright (C) 1999-2025 Free Software Foundation, Inc.
+   Copyright (C) 1999-2026 Free Software Foundation, Inc.
    Copyright (C) 1997, 1998, 1999 Colin Plumb.
 
    This program is free software: you can redistribute it and/or modify
@@ -89,6 +89,7 @@
 #include "assure.h"
 #include "xdectoint.h"
 #include "fcntl--.h"
+#include "gethrxtime.h"
 #include "human.h"
 #include "randint.h"
 #include "randread.h"
@@ -118,7 +119,7 @@ enum remove_method
 
 static char const *const remove_args[] =
 {
-  "unlink", "wipe", "wipesync", nullptr
+  "unlink", "wipe", "wipesync", NULL
 };
 
 static enum remove_method const remove_methods[] =
@@ -146,17 +147,17 @@ enum
 
 static struct option const long_opts[] =
 {
-  {"exact", no_argument, nullptr, 'x'},
-  {"force", no_argument, nullptr, 'f'},
-  {"iterations", required_argument, nullptr, 'n'},
-  {"size", required_argument, nullptr, 's'},
-  {"random-source", required_argument, nullptr, RANDOM_SOURCE_OPTION},
-  {"remove", optional_argument, nullptr, 'u'},
-  {"verbose", no_argument, nullptr, 'v'},
-  {"zero", no_argument, nullptr, 'z'},
+  {"exact", no_argument, NULL, 'x'},
+  {"force", no_argument, NULL, 'f'},
+  {"iterations", required_argument, NULL, 'n'},
+  {"size", required_argument, NULL, 's'},
+  {"random-source", required_argument, NULL, RANDOM_SOURCE_OPTION},
+  {"remove", optional_argument, NULL, 'u'},
+  {"verbose", no_argument, NULL, 'v'},
+  {"zero", no_argument, NULL, 'z'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -178,22 +179,45 @@ If FILE is -, shred standard output.\n\
 
       emit_mandatory_arg_note ();
 
-      printf (_("\
-  -f, --force    change permissions to allow writing if necessary\n\
-  -n, --iterations=N  overwrite N times instead of the default (%d)\n\
-      --random-source=FILE  get random bytes from FILE\n\
-  -s, --size=N   shred this many bytes (suffixes like K, M, G accepted)\n\
+      oputs (_("\
+  -f, --force\n\
+         change permissions to allow writing if necessary\n\
+"));
+      oprintf (_("\
+  -n, --iterations=N\n\
+         overwrite N times instead of the default (%d)\n\
 "), DEFAULT_PASSES);
-      fputs (_("\
-  -u             deallocate and remove file after overwriting\n\
-      --remove[=HOW]  like -u but give control on HOW to delete;  See below\n\
-  -v, --verbose  show progress\n\
-  -x, --exact    do not round file sizes up to the next full block;\n\
-                   this is the default for non-regular files\n\
-  -z, --zero     add a final overwrite with zeros to hide shredding\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+      --random-source=FILE\n\
+         get random bytes from FILE\n\
+"));
+      oputs (_("\
+  -s, --size=N\n\
+         shred this many bytes (suffixes like K, M, G accepted)\n\
+"));
+      oputs (_("\
+  -u\n\
+         deallocate and remove file after overwriting\n\
+"));
+      oputs (_("\
+      --remove[=HOW]\n\
+         like -u but give control on HOW to delete;  See below\n\
+"));
+      oputs (_("\
+  -v, --verbose\n\
+         show details of data and metadata operations performed\n\
+"));
+      oputs (_("\
+  -x, --exact\n\
+         do not round file sizes up to the next full block;\n\
+         this is the default for non-regular files\n\
+"));
+      oputs (_("\
+  -z, --zero\n\
+         add a final overwrite with zeros to hide shredding\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       fputs (_("\
 \n\
 Delete FILE(s) if --remove (-u) is specified.  The default is not to remove\n\
@@ -395,12 +419,12 @@ dopass (int fd, struct stat const *st, char const *qname, off_t *sizep,
         unsigned long int k, unsigned long int n)
 {
   off_t size = *sizep;
-  off_t offset;			/* Current file position */
-  time_t thresh IF_LINT ( = 0);	/* Time to maybe print next status update */
-  time_t now = 0;		/* Current time */
-  size_t lim;			/* Amount of data to try writing */
-  size_t soff;			/* Offset into buffer for next write */
-  ssize_t ssize;		/* Return value from write */
+  off_t offset;                /* Current file position */
+  xtime_t prev IF_LINT ( = 0); /* Time we printed the previous update.  */
+  xtime_t now = 0;             /* Current time */
+  size_t lim;                  /* Amount of data to try writing */
+  size_t soff;                 /* Offset into buffer for next write */
+  ssize_t ssize;               /* Return value from write */
 
   /* Fill pattern buffer.  Aligning it to a page so we can do direct I/O.  */
   size_t page_size = getpagesize ();
@@ -421,7 +445,7 @@ dopass (int fd, struct stat const *st, char const *qname, off_t *sizep,
   char const *previous_human_offset;
 
   /* As a performance tweak, avoid direct I/O for small sizes,
-     as it's just a performance rather then security consideration,
+     as it's just a performance rather than security consideration,
      and direct I/O can often be unsupported for small non aligned sizes.  */
   bool try_without_directio = 0 < size && size < output_size;
   if (! try_without_directio)
@@ -443,14 +467,14 @@ dopass (int fd, struct stat const *st, char const *qname, off_t *sizep,
     }
   else
     {
-      passname (0, pass_string);
+      passname (NULL, pass_string);
     }
 
   /* Set position if first status update */
   if (n)
     {
       error (0, 0, _("%s: pass %lu/%lu (%s)..."), qname, k, n, pass_string);
-      thresh = time (nullptr) + VERBOSE_UPDATE;
+      prev = gethrxtime ();
       previous_human_offset = "";
     }
 
@@ -540,7 +564,7 @@ dopass (int fd, struct stat const *st, char const *qname, off_t *sizep,
 
       /* Time to print progress? */
       if (n && ((done && *previous_human_offset)
-                || thresh <= (now = time (nullptr))))
+                || VERBOSE_UPDATE <= xtime_sec ((now = gethrxtime ()) - prev)))
         {
           char offset_buf[LONGEST_HUMAN_READABLE + 1];
           char size_buf[LONGEST_HUMAN_READABLE + 1];
@@ -576,7 +600,7 @@ dopass (int fd, struct stat const *st, char const *qname, off_t *sizep,
 
               strcpy (previous_offset_buf, human_offset);
               previous_human_offset = previous_offset_buf;
-              thresh = now + VERBOSE_UPDATE;
+              prev = now;
 
               /*
                * Force periodic syncs to keep displayed progress accurate
@@ -812,7 +836,6 @@ static bool
 do_wipefd (int fd, char const *qname, struct randint_source *s,
            struct Options const *flags)
 {
-  size_t i;
   struct stat st;
   off_t size;		/* Size to write, size to read */
   off_t i_size = 0;	/* For small files, initial size to overwrite inode */
@@ -915,7 +938,7 @@ do_wipefd (int fd, char const *qname, struct randint_source *s,
       else
         break;
 
-      for (i = 0; i < flags->n_iterations + flags->zero_fill; i++)
+      for (size_t i = 0; i < flags->n_iterations + flags->zero_fill; i++)
         {
           int err = 0;
           int type = i < flags->n_iterations ? passarray[i] : 0;
@@ -1163,8 +1186,7 @@ main (int argc, char **argv)
   char **file;
   int n_files;
   int c;
-  int i;
-  char const *random_source = nullptr;
+  char const *random_source = NULL;
 
   initialize_main (&argc, &argv);
   set_program_name (argv[0]);
@@ -1177,7 +1199,7 @@ main (int argc, char **argv)
   flags.n_iterations = DEFAULT_PASSES;
   flags.size = -1;
 
-  while ((c = getopt_long (argc, argv, "fn:s:uvxz", long_opts, nullptr)) != -1)
+  while ((c = getopt_long (argc, argv, "fn:s:uvxz", long_opts, NULL)) != -1)
     {
       switch (c)
         {
@@ -1199,7 +1221,7 @@ main (int argc, char **argv)
           break;
 
         case 'u':
-          if (optarg == nullptr)
+          if (optarg == NULL)
             flags.remove_file = remove_wipesync;
           else
             flags.remove_file = XARGMATCH ("--remove", optarg,
@@ -1247,7 +1269,7 @@ main (int argc, char **argv)
            quotef (random_source ? random_source : "getrandom"));
   atexit (clear_random_data);
 
-  for (i = 0; i < n_files; i++)
+  for (int i = 0; i < n_files; i++)
     {
       char *qname = xstrdup (quotef (file[i]));
       if (streq (file[i], "-"))

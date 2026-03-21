@@ -1,7 +1,7 @@
 #!/bin/sh
 # exercise tail -c
 
-# Copyright 2014-2025 Free Software Foundation, Inc.
+# Copyright 2014-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -43,7 +43,7 @@ compare exp out || fail=1
 # Any part of /dev/urandom, if it exists, should be valid for tail -c.
 if test -r /dev/urandom; then
   # Or at least it should not read it forever
-  timeout --verbose 1 tail -c 4096 /dev/urandom >/dev/null 2>err
+  timeout --verbose 10 tail -c 4096 /dev/urandom >/dev/null 2>err
   case $? in
       0) ;;
       # Solaris 11 allows negative seek but then gives EINVAL on read
@@ -55,7 +55,8 @@ if test -r /dev/urandom; then
               [12].*) ;;  # Older Linux versions timeout
               *) fail=1 ;;
             esac ;;
-          *) fail=1 ;;
+             # GNU/Hurd cannot seek on /dev/urandom.
+          *) test "$(uname)" = GNU || fail=1 ;;
         esac ;;
   esac
 fi

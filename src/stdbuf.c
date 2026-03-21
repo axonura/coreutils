@@ -1,5 +1,5 @@
 /* stdbuf -- setup the standard streams for a command
-   Copyright (C) 2009-2025 Free Software Foundation, Inc.
+   Copyright (C) 2009-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -46,12 +46,12 @@ static struct
 
 static struct option const longopts[] =
 {
-  {"input", required_argument, nullptr, 'i'},
-  {"output", required_argument, nullptr, 'o'},
-  {"error", required_argument, nullptr, 'e'},
+  {"input", required_argument, NULL, 'i'},
+  {"output", required_argument, NULL, 'o'},
+  {"error", required_argument, NULL, 'e'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 /* Set size to the value of STR, interpreted as a decimal integer,
@@ -64,7 +64,7 @@ static int
 parse_size (char const *str, size_t *size)
 {
   uintmax_t tmp_size;
-  enum strtol_error e = xstrtoumax (str, nullptr, 10,
+  enum strtol_error e = xstrtoumax (str, NULL, 10,
                                     &tmp_size, "EGkKMPQRTYZ0");
   if (e == LONGINT_OK && SIZE_MAX < tmp_size)
     e = LONGINT_OVERFLOW;
@@ -94,13 +94,17 @@ Run COMMAND, with modified buffering operations for its standard streams.\n\
 
       emit_mandatory_arg_note ();
 
-      fputs (_("\
+      oputs (_("\
   -i, --input=MODE   adjust standard input stream buffering\n\
+"));
+      oputs (_("\
   -o, --output=MODE  adjust standard output stream buffering\n\
+"));
+      oputs (_("\
   -e, --error=MODE   adjust standard error stream buffering\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       fputs (_("\n\
 If MODE is 'L' the corresponding stream will be line buffered.\n\
 This option is invalid with standard input.\n"), stdout);
@@ -146,12 +150,11 @@ set_program_path (char const *arg)
         program_path = dir_name (path);
       else if ((path = getenv ("PATH")))
         {
-          char *dir;
           path = xstrdup (path);
-          for (dir = strtok (path, ":"); dir != nullptr;
-               dir = strtok (nullptr, ":"))
+          for (char *dir = strtok (path, ":"); dir != NULL;
+               dir = strtok (NULL, ":"))
             {
-              char *candidate = file_name_concat (dir, arg, nullptr);
+              char *candidate = file_name_concat (dir, arg, NULL);
               if (access (candidate, X_OK) == 0)
                 {
                   program_path = dir_name (candidate);
@@ -220,7 +223,7 @@ set_LD_PRELOAD (void)
   char const *const search_path[] = {
     program_path,
     PKGLIBEXECDIR,
-    nullptr
+    NULL
   };
 
   char const *const *path = search_path;
@@ -322,7 +325,7 @@ main (int argc, char **argv)
   initialize_exit_failure (EXIT_CANCELED);
   atexit (close_stdout);
 
-  while ((c = getopt_long (argc, argv, "+i:o:e:", longopts, nullptr)) != -1)
+  while ((c = getopt_long (argc, argv, "+i:o:e:", longopts, NULL)) != -1)
     {
       int opt_fileno;
 

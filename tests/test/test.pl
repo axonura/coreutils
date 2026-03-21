@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# Copyright (C) 2008-2025 Free Software Foundation, Inc.
+# Copyright (C) 2008-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -161,6 +161,7 @@ my @Tests =
   ['eq-4', qw(8 -eq 9), {EXIT=>1}],
   ['eq-5', qw(1 -eq 0), {EXIT=>1}],
   ['eq-6', "$limits->{UINTMAX_OFLOW} -eq 0", {EXIT=>1}],
+  ['eq-7', qw(0 -eq ' 0 ')],
 
   ['gt-1', qw(5 -gt 5), {EXIT=>1}],
   ['gt-2', qw(5 -gt 4)],

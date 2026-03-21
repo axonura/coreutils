@@ -1,5 +1,5 @@
 /* touch -- change modification and access times of files
-   Copyright (C) 1987-2025 Free Software Foundation, Inc.
+   Copyright (C) 1987-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -81,20 +81,20 @@ enum
 
 static struct option const longopts[] =
 {
-  {"time", required_argument, nullptr, TIME_OPTION},
-  {"no-create", no_argument, nullptr, 'c'},
-  {"date", required_argument, nullptr, 'd'},
-  {"reference", required_argument, nullptr, 'r'},
-  {"no-dereference", no_argument, nullptr, 'h'},
+  {"time", required_argument, NULL, TIME_OPTION},
+  {"no-create", no_argument, NULL, 'c'},
+  {"date", required_argument, NULL, 'd'},
+  {"reference", required_argument, NULL, 'r'},
+  {"no-dereference", no_argument, NULL, 'h'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 /* Valid arguments to the '--time' option. */
 static char const *const time_args[] =
 {
-  "atime", "access", "use", "mtime", "modify", nullptr
+  "atime", "access", "use", "mtime", "modify", NULL
 };
 
 /* The bits in 'change_times' that those arguments set. */
@@ -149,12 +149,12 @@ touch (char const *file)
 
   if (amtime_now)
     {
-      /* Pass nullptr to futimens so it will not fail if we have
+      /* Pass NULL to futimens so it will not fail if we have
          write access to the file, but don't own it.  */
-      t = nullptr;
+      t = NULL;
     }
 
-  char const *file_opt = fd == STDOUT_FILENO ? nullptr : file;
+  char const *file_opt = fd == STDOUT_FILENO ? NULL : file;
   int atflag = no_dereference ? AT_SYMLINK_NOFOLLOW : 0;
   int utime_errno = (fdutimensat (fd, AT_FDCWD, file_opt, t, atflag) == 0
                      ? 0 : errno);
@@ -226,30 +226,48 @@ change the times of the file associated with standard output.\n\
 
       emit_mandatory_arg_note ();
 
-      fputs (_("\
-  -a                     change only the access time\n\
-  -c, --no-create        do not create any files\n\
-  -d, --date=STRING      parse STRING and use it instead of current time\n\
-  -f                     (ignored)\n\
-"), stdout);
-      fputs (_("\
-  -h, --no-dereference   affect each symbolic link instead of any referenced\n\
-                         file (useful only on systems that can change the\n\
-                         timestamps of a symlink)\n\
-  -m                     change only the modification time\n\
-"), stdout);
-      fputs (_("\
-  -r, --reference=FILE   use this file's times instead of current time\n\
-  -t [[CC]YY]MMDDhhmm[.ss]  use specified time instead of current time,\n\
-                         with a date-time format that differs from -d's\n\
-"), stdout);
-      fputs (_("\
-      --time=WORD        specify which time to change:\n\
-                           access time (-a): 'access', 'atime', 'use';\n\
-                           modification time (-m): 'modify', 'mtime'\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+  -a\n\
+         change only the access time\n\
+"));
+      oputs (_("\
+  -c, --no-create\n\
+         do not create any files\n\
+"));
+      oputs (_("\
+  -d, --date=STRING\n\
+         parse STRING and use it instead of current time\n\
+"));
+      oputs (_("\
+  -f\n\
+         (ignored)\n\
+"));
+      oputs (_("\
+  -h, --no-dereference\n\
+         affect each symbolic link instead of any referenced file;\n\
+         useful only on systems that can change the timestamps of a symlink\n\
+"));
+      oputs (_("\
+  -m\n\
+         change only the modification time\n\
+"));
+      oputs (_("\
+  -r, --reference=FILE\n\
+         use this file's times instead of current time\n\
+"));
+      oputs (_("\
+  -t [[CC]YY]MMDDhhmm[.ss]\n\
+         use specified time instead of current time,\n\
+         with a date-time format that differs from -d's\n\
+"));
+      oputs (_("\
+      --time=WORD\n\
+         specify which time to change:\n\
+         access time (-a): 'access', 'atime', 'use';\n\
+         modification time (-m): 'modify', 'mtime'\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       emit_ancillary_info (PROGRAM_NAME);
     }
   exit (status);
@@ -258,10 +276,8 @@ change the times of the file associated with standard output.\n\
 int
 main (int argc, char **argv)
 {
-  int c;
   bool date_set = false;
-  bool ok = true;
-  char const *flex_date = nullptr;
+  char const *flex_date = NULL;
 
   initialize_main (&argc, &argv);
   set_program_name (argv[0]);
@@ -271,10 +287,8 @@ main (int argc, char **argv)
 
   atexit (close_stdout);
 
-  change_times = 0;
-  no_create = use_ref = false;
-
-  while ((c = getopt_long (argc, argv, "acd:fhmr:t:", longopts, nullptr)) != -1)
+  int c;
+  while ((c = getopt_long (argc, argv, "acd:fhmr:t:", longopts, NULL)) != -1)
     {
       switch (c)
         {
@@ -402,7 +416,7 @@ main (int argc, char **argv)
           struct tm const *tm = localtime (&newtime[0].tv_sec);
 
           /* Technically, it appears that even a deliberate attempt to cause
-             the above localtime to return nullptr will always fail because our
+             the above localtime to return NULL will always fail because our
              posixtime implementation rejects all dates for which localtime
              would fail.  However, skip the warning if it ever fails.  */
           if (tm)
@@ -431,6 +445,7 @@ main (int argc, char **argv)
       usage (EXIT_FAILURE);
     }
 
+  bool ok = true;
   for (; optind < argc; ++optind)
     ok &= touch (argv[optind]);
 

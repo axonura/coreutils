@@ -1,5 +1,5 @@
 /* printf - format and print data
-   Copyright (C) 1990-2025 Free Software Foundation, Inc.
+   Copyright (C) 1990-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -59,8 +59,8 @@ Usage: %s FORMAT [ARGUMENT]...\n\
 Print ARGUMENT(s) according to FORMAT, or execute according to OPTION:\n\
 \n\
 "), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
       fputs (_("\
 \n\
 FORMAT controls the output as in C printf.  Interpreted sequences are:\n\
@@ -669,7 +669,7 @@ print_formatted (char const *format, int argc, char **argv)
           print_direc (direc, *ac.f,
                        have_field_width, field_width,
                        have_precision, precision,
-                       ac.curr_arg < argc ? argv[ac.curr_arg] : nullptr);
+                       ac.curr_arg < argc ? argv[ac.curr_arg] : NULL);
 
           break;
 
@@ -700,9 +700,7 @@ main (int argc, char **argv)
 
   atexit (close_stdout);
 
-  exit_status = EXIT_SUCCESS;
-
-  posixly_correct = (getenv ("POSIXLY_CORRECT") != nullptr);
+  posixly_correct = (getenv ("POSIXLY_CORRECT") != NULL);
 
   /* We directly parse options, rather than use parse_long_options, in
      order to avoid accepting abbreviations.  */
@@ -714,7 +712,7 @@ main (int argc, char **argv)
       if (streq (argv[1], "--version"))
         {
           version_etc (stdout, PROGRAM_NAME, PACKAGE_NAME, Version, AUTHORS,
-                       (char *) nullptr);
+                       (char *) NULL);
           return EXIT_SUCCESS;
         }
     }

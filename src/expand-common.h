@@ -1,6 +1,6 @@
 /* expand-common - common functionality for expand/unexpand
 
-   Copyright (C) 1989-2025 Free Software Foundation, Inc.
+   Copyright (C) 1989-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -62,7 +62,7 @@ set_file_list (char **file_list);
 /* Close the old stream pointer FP if it is non-null,
    and return a new one opened to read the next input file.
    Open a filename of '-' as the standard input.
-   Return nullptr if there are no more input files.  */
+   Return NULL if there are no more input files.  */
 extern FILE *
 next_file (FILE *fp);
 
@@ -73,4 +73,4 @@ cleanup_file_list_stdin (void);
 /* Emit the --help output for --tabs=LIST option accepted by expand and
    unexpand.  */
 extern void
-emit_tab_list_info (void);
+emit_tab_list_info (char const *program);

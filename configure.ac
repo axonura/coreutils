@@ -1,7 +1,7 @@
 # -*- autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-# Copyright (C) 1991-2025 Free Software Foundation, Inc.
+# Copyright (C) 1991-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -105,16 +105,16 @@ AC_DEFUN([gl_GCC_VERSION_IFELSE],
 )
 
 AC_ARG_ENABLE([single-binary],
-  [AS_HELP_STRING([--enable-single-binary=[shebangs|symlinks]],
+  [AS_HELP_STRING([--enable-single-binary=[shebangs|symlinks|hardlinks]],
      [Compile all the tools in a single binary, reducing the overall size.
-      When compiled this way, shebangs (default when enabled) or symlinks are
-      installed for each tool that points to the single binary.])],
+      When compiled this way, shebangs (default when enabled), symlinks, or
+      hardlinks are installed for each tool, which point to a single binary])],
   [gl_single_binary=no ;
    case $enableval in
      yes) gl_single_binary=shebangs ;;
-     no|shebangs|symlinks) gl_single_binary=$enableval ;;
+     no|shebangs|symlinks|hardlinks) gl_single_binary=$enableval ;;
      *)      AC_MSG_ERROR([bad value $enableval for single-binary option.
-                           Options are: symlinks, shebangs, no.]) ;;
+                           Options are: hardlinks, symlinks, shebangs, no.]) ;;
    esac],
   [gl_single_binary=no]
 )
@@ -126,18 +126,20 @@ AC_ARG_ENABLE([single-binary-exceptions],
   [gl_single_binary_exceptions=$enableval],
   [gl_single_binary_exceptions=]
 )
-if test "$gl_single_binary" = 'symlinks'; then
+if test "$gl_single_binary" = 'symlinks' ||
+   test "$gl_single_binary" = 'hardlinks'; then
   if ! test "`echo ls | sed \"$program_transform_name\"`" = 'ls'; then
     AC_MSG_ERROR([program name transformations are not currently supported
-                  with --enable-single-binary=symlinks.])
+                  with --enable-single-binary=$gl_single_binary.])
   fi
 fi
 AM_CONDITIONAL([SINGLE_BINARY], [test "$gl_single_binary" != no])
+AM_CONDITIONAL([SINGLE_BINARY_HARD], [test "$gl_single_binary" = hardlinks])
 
 AC_ARG_ENABLE([bold-man-page-references],
   [AS_HELP_STRING([--disable-bold-man-page-references],
-     [When generating man pages, do not apply bold style around any
-      references like name(1) etc.])],
+     [When generating man pages, or displaying --help, do not apply bold style
+      around any references like name(1) or --option references etc.])],
   [gl_bold_manpages=yes ;
    case $enableval in
      no|yes) gl_bold_manpages=$enableval ;;
@@ -146,7 +148,30 @@ AC_ARG_ENABLE([bold-man-page-references],
    esac],
   [gl_bold_manpages=yes]
 )
+if test "$gl_bold_manpages" != no; then
+  AC_DEFINE([BOLD_MAN_REFS], [1], [Whether to markup references as bold])
+fi
 AM_CONDITIONAL([BOLD_MAN_REFS], [test "$gl_bold_manpages" != no])
+
+AC_ARG_ENABLE([manual-url],
+  [AS_HELP_STRING([--enable-manual-url@<:@=<url>@:>@],
+     [When generating man pages, or displaying --help, generate hyperlinks
+      from each "--option" to <url>@%:@command-option.  A local file is
+      supported through a file:// URL.  The default URL used is:
+      $PACKAGE_URL/manual/$PACKAGE.html.])],
+  [case $enableval in
+     yes) gl_manual_url=default ;;
+     no) gl_manual_url='' ;;
+     *)  gl_manual_url="$enableval" ;;
+   esac],
+  [gl_manual_url=default]
+)
+if test x"$gl_manual_url" != x; then
+  if test "$gl_manual_url" = default; then
+    gl_manual_url=${PACKAGE_URL}manual/$PACKAGE.html
+  fi
+  AC_DEFINE_UNQUOTED([MANUAL_URL], ["$gl_manual_url"], [URL for full manual])
+fi
 
 AC_ARG_ENABLE([gcc-warnings],
   [AS_HELP_STRING([--enable-gcc-warnings@<:@=TYPE@:>@],
@@ -529,6 +554,16 @@ CFLAGS=$ac_save_CFLAGS
 LDFLAGS=$ac_save_LDFLAGS
 ac_c_werror_flag=$cu_save_c_werror_flag
 
+# Don't build chcon and runcon if only have gnulib stubs
+# Honor --without-selinux to force disable
+# and --with-selinux to force enable.
+if test "$with_selinux" != no &&
+   { test "$with_selinux" = yes ||
+     test "$ac_cv_header_selinux_selinux_h" = yes; }; then
+  gl_ADD_PROG([optional_bin_progs], [chcon])
+  gl_ADD_PROG([optional_bin_progs], [runcon])
+fi
+
 # Test compiler support for half precision floating point types (for od)
 AC_MSG_CHECKING([IEEE 16 bit floating point])
 AC_CACHE_VAL([utils_cv_ieee_16_bit_supported],[
@@ -773,6 +808,45 @@ AM_CONDITIONAL([USE_AVX512_WC_LINECOUNT],
                [test $utils_cv_avx512_intrinsic_exists = yes])
 
 CFLAGS=$ac_save_CFLAGS
+
+CFLAGS="-march=armv8-a+simd $CFLAGS"
+AC_MSG_CHECKING([for neon intrinsics])
+AC_CACHE_VAL([utils_cv_neon_intrinsic_exists],[
+AC_LINK_IFELSE(
+  [AC_LANG_SOURCE([[
+    #include <sys/auxv.h>
+    #include <asm/hwcap.h>
+    #include <arm_neon.h>
+
+    int
+    main (void)
+    {
+      unsigned char buffer[128] = {0};
+      const uint8x16_t endlines = vdupq_n_u8 ('\n');
+      int8x16_t acc0 = vdupq_n_s8 (0);
+      uint8x16_t v0 = vld1q_u8 (buffer);
+      int8x16_t c0 = vreinterpretq_s8_u8 (vceqq_u8 (v0, endlines));
+      acc0 = vaddq_s8 (acc0, c0);
+      int16x8_t a0 = vpaddlq_s8 (acc0);
+      int32x4_t b0 = vpaddlq_s16 (a0);
+      int64x2_t c1 = vpaddlq_s32 (b0);
+      int lines = vgetq_lane_s64 (c1, 0) + vgetq_lane_s64 (c1, 1);
+      return lines && 0 < (getauxval (AT_HWCAP) & HWCAP_ASIMD);
+    }
+  ]])
+  ],[
+    utils_cv_neon_intrinsic_exists=yes
+  ],[
+    utils_cv_neon_intrinsic_exists=no
+  ])])
+AC_MSG_RESULT([$utils_cv_neon_intrinsic_exists])
+if test $utils_cv_neon_intrinsic_exists = yes; then
+  AC_DEFINE([USE_NEON_WC_LINECOUNT], [1], [Counting lines with Neon enabled])
+fi
+AM_CONDITIONAL([USE_NEON_WC_LINECOUNT],
+               [test $utils_cv_neon_intrinsic_exists = yes])
+
+CFLAGS=$ac_save_CFLAGS
 ############################################################################
 
 dnl Autogenerated by the 'gen-lists-of-programs.sh' auxiliary script.
@@ -876,13 +950,13 @@ AC_SUBST([EXTRA_MANS])          AM_SUBST_NOTMAKE([EXTRA_MANS])
 AC_SUBST([built_programs], [$optional_bin_progs])
 
 AM_CONDITIONAL([CROSS_COMPILING], [test "$cross_compiling" = yes])
-
 ############################################################################
 
 # As long as "grep 'PRI[diouxX]' po/*.pot" reports matches in
 # translatable strings, we must use need-formatstring-macros here.
 AM_GNU_GETTEXT([external], [need-formatstring-macros])
 AM_GNU_GETTEXT_VERSION([0.19.2])
+AM_CONDITIONAL([USE_NLS], [test "$USE_NLS" = yes])
 
 # For a test of uniq: it uses the $LOCALE_FR envvar.
 gt_LOCALE_FR
@@ -892,4 +966,6 @@ AC_CONFIG_FILES(
   po/Makefile.in
   gnulib-tests/Makefile
   )
+AC_CONFIG_FILES([build-aux/makeinfo-wrapper.sh],
+                [chmod +x build-aux/makeinfo-wrapper.sh])
 AC_OUTPUT

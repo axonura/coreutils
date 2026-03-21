@@ -1,5 +1,5 @@
 /* Base64, base32, and similar encoding/decoding strings or files.
-   Copyright (C) 2004-2025 Free Software Foundation, Inc.
+   Copyright (C) 2004-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -74,23 +74,23 @@ enum
 
 static struct option const long_options[] =
 {
-  {"decode", no_argument, 0, 'd'},
-  {"wrap", required_argument, 0, 'w'},
-  {"ignore-garbage", no_argument, 0, 'i'},
+  {"decode", no_argument, NULL, 'd'},
+  {"wrap", required_argument, NULL, 'w'},
+  {"ignore-garbage", no_argument, NULL, 'i'},
 #if BASE_TYPE == 42
-  {"base64",    no_argument, 0, BASE64_OPTION},
-  {"base64url", no_argument, 0, BASE64URL_OPTION},
-  {"base58",    no_argument, 0, BASE58_OPTION},
-  {"base32",    no_argument, 0, BASE32_OPTION},
-  {"base32hex", no_argument, 0, BASE32HEX_OPTION},
-  {"base16",    no_argument, 0, BASE16_OPTION},
-  {"base2msbf", no_argument, 0, BASE2MSBF_OPTION},
-  {"base2lsbf", no_argument, 0, BASE2LSBF_OPTION},
-  {"z85",       no_argument, 0, Z85_OPTION},
+  {"base64",    no_argument, NULL, BASE64_OPTION},
+  {"base64url", no_argument, NULL, BASE64URL_OPTION},
+  {"base58",    no_argument, NULL, BASE58_OPTION},
+  {"base32",    no_argument, NULL, BASE32_OPTION},
+  {"base32hex", no_argument, NULL, BASE32HEX_OPTION},
+  {"base16",    no_argument, NULL, BASE16_OPTION},
+  {"base2msbf", no_argument, NULL, BASE2MSBF_OPTION},
+  {"base2lsbf", no_argument, NULL, BASE2LSBF_OPTION},
+  {"z85",       no_argument, NULL, Z85_OPTION},
 #endif
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
 
 void
@@ -117,46 +117,62 @@ Base%d encode or decode FILE, or standard input, to standard output.\n\
       emit_stdin_note ();
       emit_mandatory_arg_note ();
 #if BASE_TYPE == 42
-      fputs (_("\
-      --base64          same as 'base64' program (RFC4648 section 4)\n\
-"), stdout);
-      fputs (_("\
-      --base64url       file- and url-safe base64 (RFC4648 section 5)\n\
-"), stdout);
-      fputs (_("\
-      --base58          visually unambiguous base58 encoding\n\
-"), stdout);
-      fputs (_("\
-      --base32          same as 'base32' program (RFC4648 section 6)\n\
-"), stdout);
-      fputs (_("\
-      --base32hex       extended hex alphabet base32 (RFC4648 section 7)\n\
-"), stdout);
-      fputs (_("\
-      --base16          hex encoding (RFC4648 section 8)\n\
-"), stdout);
-      fputs (_("\
-      --base2msbf       bit string with most significant bit (msb) first\n\
-"), stdout);
-      fputs (_("\
-      --base2lsbf       bit string with least significant bit (lsb) first\n\
-"), stdout);
+      oputs (_("\
+      --base64\n\
+         same as 'base64' program (RFC4648 section 4)\n\
+"));
+      oputs (_("\
+      --base64url\n\
+         file- and url-safe base64 (RFC4648 section 5)\n\
+"));
+      oputs (_("\
+      --base58\n\
+         visually unambiguous base58 encoding\n\
+"));
+      oputs (_("\
+      --base32\n\
+         same as 'base32' program (RFC4648 section 6)\n\
+"));
+      oputs (_("\
+      --base32hex\n\
+         extended hex alphabet base32 (RFC4648 section 7)\n\
+"));
+      oputs (_("\
+      --base16\n\
+         hex encoding (RFC4648 section 8)\n\
+"));
+      oputs (_("\
+      --base2msbf\n\
+         bit string with most significant bit (msb) first\n\
+"));
+      oputs (_("\
+      --base2lsbf\n\
+         bit string with least significant bit (lsb) first\n\
+"));
 #endif
-      fputs (_("\
-  -d, --decode          decode data\n\
-  -i, --ignore-garbage  when decoding, ignore non-alphabet characters\n\
-  -w, --wrap=COLS       wrap encoded lines after COLS character (default 76).\n\
-                          Use 0 to disable line wrapping\n\
-"), stdout);
+      oputs (_("\
+  -d, --decode\n\
+         decode data\n\
+"));
+      oputs (_("\
+  -i, --ignore-garbage\n\
+         when decoding, ignore non-alphabet characters\n\
+"));
+      oputs (_("\
+  -w, --wrap=COLS\n\
+         wrap encoded lines after COLS character (default 76).\n\
+         Use 0 to disable line wrapping\n\
+"));
 #if BASE_TYPE == 42
-      fputs (_("\
-      --z85             ascii85-like encoding (ZeroMQ spec:32/Z85);\n\
-                        when encoding, input length must be a multiple of 4;\n\
-                        when decoding, input length must be a multiple of 5\n\
-"), stdout);
+      oputs (_("\
+      --z85\n\
+         ascii85-like encoding (ZeroMQ spec:32/Z85);\n\
+         when encoding, input length must be a multiple of 4;\n\
+         when decoding, input length must be a multiple of 5\n\
+"));
 #endif
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
 #if BASE_TYPE == 42
       fputs (_("\
 \n\
@@ -833,7 +849,7 @@ z85_length (idx_t len)
 static bool
 isuz85 (unsigned char ch)
 {
-  return c_isalnum (ch) || strchr (".-:+=^!/*?&<>()[]{}@%$#", ch) != nullptr;
+  return c_isalnum (ch) || strchr (".-:+=^!/*?&<>()[]{}@%$#", ch) != NULL;
 }
 
 static char const z85_encoding[85] ATTRIBUTE_NONSTRING =
@@ -1224,7 +1240,7 @@ base58_length (idx_t len)
 static void
 base58_encode_ctx_init (struct base_encode_context *ctx)
 {
-  ctx->ctx.base58.buf = nullptr;
+  ctx->ctx.base58.buf = NULL;
   ctx->ctx.base58.size = 0;
   ctx->ctx.base58.capacity = 0;
 }
@@ -1256,7 +1272,7 @@ base58_encode_ctx (struct base_encode_context *ctx,
 }
 
 static void
-base58_encode (char const* data, size_t data_len,
+base58_encode (char const *data, size_t data_len,
                char *out, idx_t *outlen)
 {
   affirm (base_length (data_len) <= *outlen);
@@ -1300,7 +1316,7 @@ base58_encode_ctx_finalize (struct base_encode_context *ctx,
                  *out, outlen);
 
   free (ctx->ctx.base58.buf);
-  ctx->ctx.base58.buf = nullptr;
+  ctx->ctx.base58.buf = NULL;
 
   return true;
 }
@@ -1311,7 +1327,7 @@ base58_decode_ctx_init (struct base_decode_context *ctx)
 {
   ctx->ctx.base58.size = 0;
   ctx->ctx.base58.capacity = 0;
-  ctx->ctx.base58.buf = nullptr;
+  ctx->ctx.base58.buf = NULL;
 }
 
 static bool
@@ -1414,7 +1430,7 @@ base58_decode_ctx_finalize (struct base_decode_context *ctx,
                             *out, outlen);
 
   free (ctx->ctx.base58.buf);
-  ctx->ctx.base58.buf = nullptr;
+  ctx->ctx.base58.buf = NULL;
 
   return ret;
 }
@@ -1481,7 +1497,7 @@ do_encode (FILE *in, char const *infile, FILE *out, idx_t wrap_column)
 #if BASE_TYPE == 42
   /* Initialize encoding context if needed (for base58) */
   struct base_encode_context encode_ctx;
-  bool use_ctx = (base_encode_ctx_init != nullptr);
+  bool use_ctx = (base_encode_ctx_init != NULL);
   if (use_ctx)
     base_encode_ctx_init (&encode_ctx);
 #endif
@@ -1553,7 +1569,7 @@ do_decode (FILE *in, char const *infile, FILE *out, bool ignore_garbage)
   outbuf = xmalloc (DEC_BLOCKSIZE);
 
 #if BASE_TYPE == 42
-  ctx.inbuf = nullptr;
+  ctx.inbuf = NULL;
 #endif
   base_decode_ctx_init (&ctx);
 
@@ -1636,7 +1652,7 @@ main (int argc, char **argv)
 
   atexit (close_stdout);
 
-  while ((opt = getopt_long (argc, argv, "diw:", long_options, nullptr)) != -1)
+  while ((opt = getopt_long (argc, argv, "diw:", long_options, NULL)) != -1)
     switch (opt)
       {
       case 'd':
@@ -1646,7 +1662,7 @@ main (int argc, char **argv)
       case 'w':
         {
           intmax_t w;
-          strtol_error s_err = xstrtoimax (optarg, nullptr, 10, &w, "");
+          strtol_error s_err = xstrtoimax (optarg, NULL, 10, &w, "");
           if (LONGINT_OVERFLOW < s_err || w < 0)
             error (EXIT_FAILURE, 0, "%s: %s",
                    _("invalid wrap size"), quote (optarg));
@@ -1805,7 +1821,7 @@ main (int argc, char **argv)
   else
     {
       input_fh = fopen (infile, "rb");
-      if (input_fh == nullptr)
+      if (input_fh == NULL)
         error (EXIT_FAILURE, errno, "%s", quotef (infile));
     }
 

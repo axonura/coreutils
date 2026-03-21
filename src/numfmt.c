@@ -1,5 +1,5 @@
 /* Reformat numbers like 11505426432 to the more human-readable 11G
-   Copyright (C) 2012-2025 Free Software Foundation, Inc.
+   Copyright (C) 2012-2026 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,7 +15,6 @@
    along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <config.h>
-#include <ctype.h>
 #include <float.h>
 #include <getopt.h>
 #include <stdio.h>
@@ -25,6 +24,7 @@
 #include "argmatch.h"
 #include "c-ctype.h"
 #include "mbswidth.h"
+#include "mcel.h"
 #include "quote.h"
 #include "skipchars.h"
 #include "system.h"
@@ -59,7 +59,8 @@ enum
   DEV_DEBUG_OPTION,
   HEADER_OPTION,
   FORMAT_OPTION,
-  INVALID_OPTION
+  INVALID_OPTION,
+  UNIT_SEPARATOR_OPTION
 };
 
 enum scale_type
@@ -73,7 +74,7 @@ enum scale_type
 
 static char const *const scale_from_args[] =
 {
-  "none", "auto", "si", "iec", "iec-i", nullptr
+  "none", "auto", "si", "iec", "iec-i", NULL
 };
 
 static enum scale_type const scale_from_types[] =
@@ -83,7 +84,7 @@ static enum scale_type const scale_from_types[] =
 
 static char const *const scale_to_args[] =
 {
-  "none", "si", "iec", "iec-i", nullptr
+  "none", "si", "iec", "iec-i", NULL
 };
 
 static enum scale_type const scale_to_types[] =
@@ -103,7 +104,7 @@ enum round_type
 
 static char const *const round_args[] =
 {
-  "up", "down", "from-zero", "towards-zero", "nearest", nullptr
+  "up", "down", "from-zero", "towards-zero", "nearest", NULL
 };
 
 static enum round_type const round_types[] =
@@ -122,7 +123,7 @@ enum inval_type
 
 static char const *const inval_args[] =
 {
-  "abort", "fail", "warn", "ignore", nullptr
+  "abort", "fail", "warn", "ignore", NULL
 };
 
 static enum inval_type const inval_types[] =
@@ -132,29 +133,27 @@ static enum inval_type const inval_types[] =
 
 static struct option const longopts[] =
 {
-  {"from", required_argument, nullptr, FROM_OPTION},
-  {"from-unit", required_argument, nullptr, FROM_UNIT_OPTION},
-  {"to", required_argument, nullptr, TO_OPTION},
-  {"to-unit", required_argument, nullptr, TO_UNIT_OPTION},
-  {"round", required_argument, nullptr, ROUND_OPTION},
-  {"padding", required_argument, nullptr, PADDING_OPTION},
-  {"suffix", required_argument, nullptr, SUFFIX_OPTION},
-  {"grouping", no_argument, nullptr, GROUPING_OPTION},
-  {"delimiter", required_argument, nullptr, 'd'},
-  {"field", required_argument, nullptr, FIELD_OPTION},
-  {"debug", no_argument, nullptr, DEBUG_OPTION},
-  {"-debug", no_argument, nullptr, DEV_DEBUG_OPTION},
-  {"header", optional_argument, nullptr, HEADER_OPTION},
-  {"format", required_argument, nullptr, FORMAT_OPTION},
-  {"invalid", required_argument, nullptr, INVALID_OPTION},
-  {"zero-terminated", no_argument, nullptr, 'z'},
+  {"from", required_argument, NULL, FROM_OPTION},
+  {"from-unit", required_argument, NULL, FROM_UNIT_OPTION},
+  {"to", required_argument, NULL, TO_OPTION},
+  {"to-unit", required_argument, NULL, TO_UNIT_OPTION},
+  {"round", required_argument, NULL, ROUND_OPTION},
+  {"padding", required_argument, NULL, PADDING_OPTION},
+  {"suffix", required_argument, NULL, SUFFIX_OPTION},
+  {"unit-separator", required_argument, NULL, UNIT_SEPARATOR_OPTION},
+  {"grouping", no_argument, NULL, GROUPING_OPTION},
+  {"delimiter", required_argument, NULL, 'd'},
+  {"field", required_argument, NULL, FIELD_OPTION},
+  {"debug", no_argument, NULL, DEBUG_OPTION},
+  {"-debug", no_argument, NULL, DEV_DEBUG_OPTION},
+  {"header", optional_argument, NULL, HEADER_OPTION},
+  {"format", required_argument, NULL, FORMAT_OPTION},
+  {"invalid", required_argument, NULL, INVALID_OPTION},
+  {"zero-terminated", no_argument, NULL, 'z'},
   {GETOPT_HELP_OPTION_DECL},
   {GETOPT_VERSION_OPTION_DECL},
-  {nullptr, 0, nullptr, 0}
+  {NULL, 0, NULL, 0}
 };
-
-/* If delimiter has this value, blanks separate fields.  */
-enum { DELIMITER_DEFAULT = CHAR_MAX + 1 };
 
 /* Maximum number of digits we can safely handle
    without precision loss, if scaling is 'none'.  */
@@ -170,18 +169,19 @@ static enum scale_type scale_from = scale_none;
 static enum scale_type scale_to = scale_none;
 static enum round_type round_style = round_from_zero;
 static enum inval_type inval_style = inval_abort;
-static char const *suffix = nullptr;
+static char const *suffix = NULL;
+static char const *unit_separator = NULL;
 static uintmax_t from_unit_size = 1;
 static uintmax_t to_unit_size = 1;
 static int grouping = 0;
-static char *padding_buffer = nullptr;
+static char *padding_buffer = NULL;
 static idx_t padding_buffer_size = 0;
 static intmax_t padding_width = 0;
 static int zero_padding_width = 0;
 static long int user_precision = -1;
-static char const *format_str = nullptr;
-static char *format_str_prefix = nullptr;
-static char *format_str_suffix = nullptr;
+static char const *format_str = NULL;
+static char *format_str_prefix = NULL;
+static char *format_str_suffix = NULL;
 
 /* By default, any conversion error will terminate the program.  */
 static int conv_exit_code = EXIT_CONVERSION_WARNINGS;
@@ -190,8 +190,8 @@ static int conv_exit_code = EXIT_CONVERSION_WARNINGS;
 /* auto-pad each line based on skipped whitespace.  */
 static int auto_padding = 0;
 
-/* field delimiter */
-static int delimiter = DELIMITER_DEFAULT;
+/* field delimiter - if NULL, blanks separate fields.  */
+static char const *delimiter = NULL;
 
 /* line delimiter.  */
 static unsigned char line_delim = '\n';
@@ -206,10 +206,17 @@ static bool debug;
 /* will be set according to the current locale.  */
 static char const *decimal_point;
 static int decimal_point_length;
+static char const *thousands_sep;
+static int thousands_sep_length;
 
 /* debugging for developers.  Enables devmsg().  */
 static bool dev_debug = false;
 
+static bool
+newline_or_blank (mcel_t g)
+{
+  return g.ch == '\n' || c32issep (g.ch);
+}
 
 static inline int
 default_scale_base (enum scale_type scale)
@@ -234,7 +241,7 @@ static char const *valid_suffixes = 1 + zero_and_valid_suffixes;
 static inline bool
 valid_suffix (const char suf)
 {
-  return strchr (valid_suffixes, suf) != nullptr;
+  return strchr (valid_suffixes, suf) != NULL;
 }
 
 static inline int
@@ -514,6 +521,11 @@ simple_strtod_int (char const *input_str,
       val += digit;
 
       ++(*endptr);
+
+      if (thousands_sep_length > 0
+          && STREQ_LEN (*endptr, thousands_sep, thousands_sep_length)
+          && c_isdigit ((*endptr)[thousands_sep_length]))
+        (*endptr) += thousands_sep_length;
     }
   if (! found_digit
       && ! STREQ_LEN (*endptr, decimal_point, decimal_point_length))
@@ -645,15 +657,37 @@ simple_strtod_human (char const *input_str,
     {
       /* process suffix.  */
 
-      /* Skip any blanks between the number and suffix.  */
-      while (isblank (to_uchar (**endptr)))
-        (*endptr)++;
+      /* Skip a single blank, NBSP or specified unit separator.
+         Note an explicit empty --unit-sep should disable blank matching. */
+      bool matched_unit_sep = false;
+      if (unit_separator)
+        {
+          size_t sep_len = strlen (unit_separator);
+          if (STREQ_LEN (*endptr, unit_separator, sep_len))
+            {
+              matched_unit_sep = true;
+              (*endptr) += sep_len;
+            }
+        }
+      if (!matched_unit_sep)
+        {
+          mcel_t g = mcel_scanz (*endptr);
+          if (c32issep (g.ch) || c32isnbspace (g.ch))
+            (*endptr) += g.len;
+        }
 
       if (**endptr == '\0')
         break;  /* Treat as no suffix.  */
 
       if (!valid_suffix (**endptr))
-        return SSE_INVALID_SUFFIX;
+        {
+          /* Trailing blanks are allowed.  */
+          *endptr = skip_str_matching (*endptr, newline_or_blank, true);
+          if (**endptr == '\0')
+            break;
+
+          return SSE_INVALID_SUFFIX;
+        }
 
       if (allowed_scaling == scale_none)
         return SSE_VALID_BUT_FORBIDDEN_SUFFIX;
@@ -680,6 +714,9 @@ simple_strtod_human (char const *input_str,
 
       *precision = 0;  /* Reset, to select precision based on scale.  */
 
+      /* Trailing blanks are allowed.  */
+      *endptr = skip_str_matching (*endptr, newline_or_blank, true);
+
       break;
     }
 
@@ -699,7 +736,7 @@ simple_strtod_human (char const *input_str,
 static void
 simple_strtod_fatal (enum simple_strtod_error err, char const *input_str)
 {
-  char const *msgid = nullptr;
+  char const *msgid = NULL;
 
   switch (err)
     {
@@ -744,7 +781,7 @@ double_to_human (long double val, int precision,
                  char *buf, idx_t buf_size,
                  enum scale_type scale, int group, enum round_type round)
 {
-  char fmt[sizeof "%'0.*Lfi%s%s%s" + INT_STRLEN_BOUND (zero_padding_width)];
+  char fmt[sizeof "%'0.*Lfi%s%s%s%s" + INT_STRLEN_BOUND (zero_padding_width)];
   char *pfmt = fmt;
   *pfmt++ = '%';
 
@@ -811,11 +848,12 @@ double_to_human (long double val, int precision,
 
   devmsg ("  after rounding, value=%Lf * %0.f ^ %d\n", val, scale_base, power);
 
-  strcpy (pfmt, ".*Lf%s%s%s");
+  strcpy (pfmt, ".*Lf%s%s%s%s");
 
   int prec = user_precision == -1 ? show_decimal_point : user_precision;
 
   return snprintf (buf, buf_size, fmt, prec, val,
+                   (power > 0 && unit_separator) ? unit_separator : "",
                    power == 1 && scale == scale_SI
                    ? "k" : suffix_power_char (power),
                    &"i"[! (scale == scale_IEC_I && 0 < power)],
@@ -831,9 +869,9 @@ unit_to_umax (char const *n_string)
 {
   strtol_error s_err;
   char const *c_string = n_string;
-  char *t_string = nullptr;
+  char *t_string = NULL;
   size_t n_len = strlen (n_string);
-  char *end = nullptr;
+  char *end = NULL;
   uintmax_t n;
   char const *suffixes = valid_suffixes;
 
@@ -883,65 +921,84 @@ Usage: %s [OPTION]... [NUMBER]...\n\
 Reformat NUMBER(s), or the numbers from standard input if none are specified.\n\
 "), stdout);
       emit_mandatory_arg_note ();
-      fputs (_("\
-      --debug          print warnings about invalid input\n\
-"), stdout);
-      fputs (_("\
-  -d, --delimiter=X    use X instead of whitespace for field delimiter\n\
-"), stdout);
-      fputs (_("\
-      --field=FIELDS   replace the numbers in these input fields (default=1);\n\
-                         see FIELDS below\n\
-"), stdout);
-      fputs (_("\
-      --format=FORMAT  use printf style floating-point FORMAT;\n\
-                         see FORMAT below for details\n\
-"), stdout);
-      fputs (_("\
-      --from=UNIT      auto-scale input numbers to UNITs; default is 'none';\n\
-                         see UNIT below\n\
-"), stdout);
-      fputs (_("\
-      --from-unit=N    specify the input unit size (instead of the default 1)\n\
-"), stdout);
-      fputs (_("\
-      --grouping       use locale-defined grouping of digits, e.g. 1,000,000\n\
-                         (which means it has no effect in the C/POSIX locale)\n\
-"), stdout);
-      fputs (_("\
-      --header[=N]     print (without converting) the first N header lines;\n\
-                         N defaults to 1 if not specified\n\
-"), stdout);
-      fputs (_("\
-      --invalid=MODE   failure mode for invalid numbers: MODE can be:\n\
-                         abort (default), fail, warn, ignore\n\
-"), stdout);
-      fputs (_("\
-      --padding=N      pad the output to N characters; positive N will\n\
-                         right-align; negative N will left-align;\n\
-                         padding is ignored if the output is wider than N;\n\
-                         the default is to automatically pad if a whitespace\n\
-                         is found\n\
-"), stdout);
-      fputs (_("\
-      --round=METHOD   use METHOD for rounding when scaling; METHOD can be:\n\
-                         up, down, from-zero (default), towards-zero, nearest\n\
-"), stdout);
-      fputs (_("\
-      --suffix=SUFFIX  add SUFFIX to output numbers, and accept optional\n\
-                         SUFFIX in input numbers\n\
-"), stdout);
-      fputs (_("\
-      --to=UNIT        auto-scale output numbers to UNITs; see UNIT below\n\
-"), stdout);
-      fputs (_("\
-      --to-unit=N      the output unit size (instead of the default 1)\n\
-"), stdout);
-      fputs (_("\
-  -z, --zero-terminated    line delimiter is NUL, not newline\n\
-"), stdout);
-      fputs (HELP_OPTION_DESCRIPTION, stdout);
-      fputs (VERSION_OPTION_DESCRIPTION, stdout);
+      oputs (_("\
+      --debug\n\
+         print warnings about invalid input\n\
+"));
+      oputs (_("\
+  -d, --delimiter=X\n\
+         use X instead of whitespace for field delimiter\n\
+"));
+      oputs (_("\
+      --field=FIELDS\n\
+         replace the numbers in these input fields (default=1);\n\
+         see FIELDS below for details\n\
+"));
+      oputs (_("\
+      --format=FORMAT\n\
+         use printf style floating-point FORMAT;\n\
+         see FORMAT below for details\n\
+"));
+      oputs (_("\
+      --from=UNIT\n\
+         auto-scale input numbers to UNITs; default is 'none';\n\
+         see UNIT below for details\n\
+"));
+      oputs (_("\
+      --from-unit=N\n\
+         specify the input unit size (instead of the default 1)\n\
+"));
+      oputs (_("\
+      --grouping\n\
+         use locale-defined grouping of digits, e.g. 1,000,000.\n\
+         This has no effect in the C/POSIX locale\n\
+"));
+      oputs (_("\
+      --header[=N]\n\
+         print (without converting) the first N header lines;\n\
+         N defaults to 1 if not specified\n\
+"));
+      oputs (_("\
+      --invalid=MODE\n\
+         failure mode for invalid numbers;\n\
+         MODE can be: abort (default), fail, warn, ignore\n\
+"));
+      oputs (_("\
+      --padding=N\n\
+         pad the output to N characters;\n\
+         positive N will right-align, negative N will left-align;\n\
+         padding is ignored if the output is wider than N;\n\
+         the default is to automatically pad if a whitespace is found\n\
+"));
+      oputs (_("\
+      --round=METHOD\n\
+         use METHOD for rounding when scaling; METHOD can be:\n\
+         up, down, from-zero (default), towards-zero, nearest\n\
+"));
+      oputs (_("\
+      --suffix=SUFFIX\n\
+         add SUFFIX to output numbers,\n\
+         and accept an optional SUFFIX in input numbers\n\
+"));
+      oputs (_("\
+      --unit-separator=SEP\n\
+         insert SEP between number and unit on output,\n\
+         and accept an optional SEP in input numbers\n\
+"));
+      oputs (_("\
+      --to=UNIT\n\
+         auto-scale output numbers to UNITs; see UNIT below\n\
+"));
+      oputs (_("\
+      --to-unit=N\n\
+         the output unit size (instead of the default 1)\n\
+"));
+      oputs (_("\
+  -z, --zero-terminated\n\
+         line delimiter is NUL, not newline\n\
+"));
+      oputs (HELP_OPTION_DESCRIPTION);
+      oputs (VERSION_OPTION_DESCRIPTION);
 
       fputs (_("\
 \n\
@@ -1043,7 +1100,7 @@ parse_format_string (char const *fmt)
   size_t i;
   size_t prefix_len = 0;
   size_t suffix_pos;
-  char *endptr = nullptr;
+  char *endptr = NULL;
   bool zero_padding = false;
 
   for (i = 0; !(fmt[i] == '%' && fmt[i + 1] != '%'); i += (fmt[i] == '%') + 1)
@@ -1104,7 +1161,7 @@ parse_format_string (char const *fmt)
       errno = 0;
       user_precision = strtol (fmt + i, &endptr, 10);
       if (errno == ERANGE || user_precision < 0 || SIZE_MAX < user_precision
-          || isblank (fmt[i]) || fmt[i] == '+')
+          || c_isblank (fmt[i]) || fmt[i] == '+')
         {
           /* Note we disallow negative user_precision to be
              consistent with printf(1).  POSIX states that
@@ -1155,7 +1212,7 @@ static enum simple_strtod_error
 parse_human_number (char const *str, long double /*output */ *value,
                     size_t *precision)
 {
-  char *ptr = nullptr;
+  char *ptr = NULL;
 
   enum simple_strtod_error e =
     simple_strtod_human (str, &ptr, value, precision, scale_from);
@@ -1276,33 +1333,36 @@ print_padded_number (intmax_t padding)
 
 /* Converts the TEXT number string to the requested representation,
    and handles automatic suffix addition.  */
-static int
+static bool
 process_suffixed_number (char *text, long double *result,
                          size_t *precision, long int field)
 {
-  if (suffix && strlen (text) > strlen (suffix))
-    {
-      char *possible_suffix = text + strlen (text) - strlen (suffix);
+  char saved_suffix = '\0';
 
-      if (streq (suffix, possible_suffix))
+  if (suffix)
+    {
+      if (mbs_endswith (text, suffix))
         {
-          /* trim suffix, ONLY if it's at the end of the text.  */
-          *possible_suffix = '\0';
+          saved_suffix = *(text + strlen (text) - strlen (suffix));
+          *(text + strlen (text) - strlen (suffix)) = '\0';
           devmsg ("trimming suffix %s\n", quote (suffix));
         }
       else
         devmsg ("no valid suffix found\n");
     }
 
-  /* Skip white space - always.  */
-  char *p = text;
-  while (*p && isblank (to_uchar (*p)))
-    ++p;
+  /* Skip blanks - always.  */
+  char *p = skip_str_matching (text, newline_or_blank, true);
 
   /* setup auto-padding.  */
   if (auto_padding)
     {
-      padding_width = text < p || 1 < field ? strlen (text) : 0;
+      padding_width = text < p || 1 < field
+                      ? mbswidth (text,
+                                  MBSW_REJECT_INVALID | MBSW_REJECT_UNPRINTABLE)
+                      : 0;
+      if (padding_width < 0)
+        padding_width = strlen (text);
       devmsg ("setting Auto-Padding to %jd characters\n", padding_width);
     }
 
@@ -1317,31 +1377,58 @@ process_suffixed_number (char *text, long double *result,
 
   *result = val;
 
-  return (e == SSE_OK || e == SSE_OK_PRECISION_LOSS);
+  if (e == SSE_OK || e == SSE_OK_PRECISION_LOSS)
+    return true;
+  else
+    {
+      if (saved_suffix)
+        *(text + strlen (text)) = saved_suffix;
+      return false;
+    }
 }
 
+/* Return true if the current charset is UTF-8.  */
 static bool
-newline_or_blank (mcel_t g)
+is_utf8_charset (void)
 {
-  return g.ch == '\n' || c32isblank (g.ch);
+  static int is_utf8 = -1;
+  if (is_utf8 == -1)
+    {
+      char32_t w;
+      mbstate_t mbs; mbszero (&mbs);
+      is_utf8 = mbrtoc32 (&w, "\xe2\x9f\xb8", 3, &mbs) == 3 && w == 0x27F8;
+    }
+  return is_utf8;
+}
+
+/* Search for multi-byte character C in multi-byte string S.
+   Return a pointer to the character, or NULL if not found.  */
+ATTRIBUTE_PURE
+static char *
+mbsmbchr (char const *s, char const *c)
+{
+  unsigned char uc = *c;
+   /* GB18030 is the most restrictive for the 0x30 optimization below.  */
+  if (uc < 0x30 || MB_CUR_MAX == 1)
+    return (char *) strchr (s, uc);
+  else if (is_utf8_charset ())
+    return (char *) (uc < 0x80 ? strchr (s, uc) : strstr (s, c));
+  else
+    return *(c + 1) == '\0' ? mbschr (s, uc) : (char *) mbsstr (s, c);
 }
 
 /* Return a pointer to the beginning of the next field in line.
    The line pointer is moved to the end of the next field. */
-static char*
+static char *
 next_field (char **line)
 {
   char *field_start = *line;
   char *field_end   = field_start;
 
-  if (delimiter != DELIMITER_DEFAULT)
+  if (delimiter)
     {
-      if (*field_start != delimiter)
-        {
-          while (*field_end && *field_end != delimiter)
-            ++field_end;
-        }
-      /* else empty field */
+      if (! (field_end = mbsmbchr (field_start, delimiter)))
+        field_end = strchr (field_start, '\0');
     }
   else
     {
@@ -1415,15 +1502,26 @@ process_line (char *line, bool newline)
 
     if (*line != '\0')
       {
-        /* nul terminate the current field string and process */
+        /* NUL terminate the current field string and process */
+        char end_field = *line;
         *line = '\0';
 
         if (! process_field (next, field))
           valid_number = false;
 
-        fputc ((delimiter == DELIMITER_DEFAULT) ?
-               ' ' : delimiter, stdout);
-        ++line;
+        if (delimiter != NULL)
+          fputs (delimiter, stdout);
+        else
+          fputc (' ', stdout);
+
+        if (delimiter)
+          line += MAX (strlen (delimiter), 1);
+        else
+          {
+            *line = end_field;
+            mcel_t g = mcel_scanz (line);
+            line += g.len;
+          }
       }
     else
       {
@@ -1437,6 +1535,9 @@ process_line (char *line, bool newline)
 
   if (newline)
     putchar (line_delim);
+
+ if (ferror (stdout))
+   write_error ();
 
   return valid_number;
 }
@@ -1459,15 +1560,20 @@ main (int argc, char **argv)
 #endif
 
   decimal_point = nl_langinfo (RADIXCHAR);
-  if (decimal_point == nullptr || strlen (decimal_point) == 0)
+  if (decimal_point == NULL || strlen (decimal_point) == 0)
     decimal_point = ".";
   decimal_point_length = strlen (decimal_point);
+
+  thousands_sep = nl_langinfo (THOUSEP);
+  if (thousands_sep == NULL)
+    thousands_sep = "";
+  thousands_sep_length = strlen (thousands_sep);
 
   atexit (close_stdout);
 
   while (true)
     {
-      int c = getopt_long (argc, argv, "d:z", longopts, nullptr);
+      int c = getopt_long (argc, argv, "d:z", longopts, NULL);
 
       if (c == -1)
         break;
@@ -1501,7 +1607,7 @@ main (int argc, char **argv)
           break;
 
         case PADDING_OPTION:
-          if (((xstrtoimax (optarg, nullptr, 10, &padding_width, "")
+          if (((xstrtoimax (optarg, NULL, 10, &padding_width, "")
                 & ~LONGINT_OVERFLOW)
                != LONGINT_OK)
               || padding_width == 0)
@@ -1519,10 +1625,17 @@ main (int argc, char **argv)
 
         case 'd':
           /* Interpret -d '' to mean 'use the NUL byte as the delimiter.'  */
-          if (optarg[0] != '\0' && optarg[1] != '\0')
-            error (EXIT_FAILURE, 0,
-                   _("the delimiter must be a single character"));
-          delimiter = optarg[0];
+          if (optarg[0] != '\0')
+            {
+              mcel_t g = mcel_scanz (optarg);
+              /* Note we always allow single bytes, especially since mcel
+                 explicitly does not avoid https://sourceware.org/PR29511
+                 I.e., we ignore g.err, and rely on g.len==1 with g.err.  */
+              if (optarg[g.len] != '\0')
+                error (EXIT_FAILURE, 0,
+                       _("the delimiter must be a single character"));
+            }
+          delimiter = optarg;
           break;
 
         case 'z':
@@ -1531,6 +1644,10 @@ main (int argc, char **argv)
 
         case SUFFIX_OPTION:
           suffix = optarg;
+          break;
+
+        case UNIT_SEPARATOR_OPTION:
+          unit_separator = optarg;
           break;
 
         case DEBUG_OPTION:
@@ -1545,7 +1662,7 @@ main (int argc, char **argv)
         case HEADER_OPTION:
           if (optarg)
             {
-              if (xstrtoumax (optarg, nullptr, 10, &header, "") != LONGINT_OK
+              if (xstrtoumax (optarg, NULL, 10, &header, "") != LONGINT_OK
                   || header == 0)
                 error (EXIT_FAILURE, 0, _("invalid header value %s"),
                        quote (optarg));
@@ -1573,7 +1690,7 @@ main (int argc, char **argv)
         }
     }
 
-  if (format_str != nullptr && grouping)
+  if (format_str != NULL && grouping)
     error (EXIT_FAILURE, 0, _("--grouping cannot be combined with --format"));
 
   if (debug && ! locale_ok)
@@ -1581,8 +1698,12 @@ main (int argc, char **argv)
 
   /* Warn about no-op.  */
   if (debug && scale_from == scale_none && scale_to == scale_none
-      && !grouping && (padding_width == 0) && (format_str == nullptr))
+      && !grouping && (padding_width == 0) && (format_str == NULL))
     error (0, 0, _("no conversion option specified"));
+
+  if (debug && unit_separator && delimiter == NULL)
+    error (0, 0,
+           _("field delimiters have higher precedence than unit separators"));
 
   if (format_str)
     parse_format_string (format_str);
@@ -1591,11 +1712,11 @@ main (int argc, char **argv)
     {
       if (scale_to != scale_none)
         error (EXIT_FAILURE, 0, _("grouping cannot be combined with --to"));
-      if (debug && (strlen (nl_langinfo (THOUSEP)) == 0))
+      if (debug && thousands_sep_length == 0)
         error (0, 0, _("grouping has no effect in this locale"));
     }
 
-  auto_padding = (padding_width == 0 && delimiter == DELIMITER_DEFAULT);
+  auto_padding = (padding_width == 0 && delimiter == NULL);
 
   if (inval_style != inval_abort)
     conv_exit_code = 0;
@@ -1610,13 +1731,16 @@ main (int argc, char **argv)
     }
   else
     {
-      char *line = nullptr;
+      char *line = NULL;
       size_t line_allocated = 0;
       ssize_t len;
 
       while (header-- && getdelim (&line, &line_allocated,
                                    line_delim, stdin) > 0)
-        fputs (line, stdout);
+        {
+          if (fputs (line, stdout) == EOF)
+            write_error ();
+        }
 
       while ((len = getdelim (&line, &line_allocated,
                               line_delim, stdin)) > 0)

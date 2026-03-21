@@ -1,7 +1,7 @@
 #!/bin/sh
 # ensure that a sparse file is copied efficiently, by default
 
-# Copyright (C) 2021-2025 Free Software Foundation, Inc.
+# Copyright (C) 2021-2026 Free Software Foundation, Inc.
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -34,6 +34,16 @@ cp --debug $other_partition_sparse k2 >cp.out || fail=1
 cmp $other_partition_sparse k2 || fail=1
 grep ': avoided' cp.out && { cat cp.out; fail=1; }
 
+
+# Create a large-non-sparse-but-compressible file
+# Ensure we don't avoid copy offload which we saw with
+# transparent compression on OpenZFS at least
+# (as that triggers our sparse heuristic).
+mls='might-look-sparse'
+yes | head -n1M > "$mls" || framework_failure_
+cp --debug "$mls" "$mls.cp" >cp.out || fail=1
+cmp "$mls" "$mls.cp" || fail=1
+grep ': avoided' cp.out && { cat cp.out; fail=1; }
 
 
 # Create a large-but-sparse file on the current partition.
